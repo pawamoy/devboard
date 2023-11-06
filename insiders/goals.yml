@@ -1,0 +1,7 @@
+goals:
+  1500:
+    name: HyperLamp Quick Start Guide
+    features:
+    - name: "[Project] A development dashboard for your projects"
+      ref: /
+      since: 2023/11/06
