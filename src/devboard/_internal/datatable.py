@@ -1,5 +1,3 @@
-"""Data tables with selectable rows."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,6 +19,7 @@ class Checkbox:
     """A checkbox, added to rows to make them selectable."""
 
     checked: bool = False
+    """Whether the checkbox is checked."""
 
     def __str__(self) -> str:
         return "■" if self.checked else ""
@@ -47,7 +46,9 @@ class SelectableRow:
     """A selectable row."""
 
     table: SelectableRowsDataTable
+    """The data table containing this row."""
     key: RowKey
+    """The row key."""
 
     @property
     def app(self) -> App:
@@ -113,6 +114,8 @@ class SelectableRowsDataTable(DataTable):
     """Data table with selectable rows."""
 
     ROW = SelectableRow
+    """The class to instantiate selectable rows."""
+
     BINDINGS: ClassVar = [
         Binding("space", "toggle_select_row", "Toggle select", show=False),
         Binding("ctrl+a, *", "toggle_select_all", "Toggle select all", show=False),
@@ -120,6 +123,7 @@ class SelectableRowsDataTable(DataTable):
         Binding("shift+up", "toggle_select_up", "Expand select up", show=False),
         Binding("shift+down", "toggle_select_down", "Expand select down", show=False),
     ]
+    """Key bindings for selecting rows."""
 
     # --------------------------------------------------
     # Textual methods.

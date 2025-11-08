@@ -1,5 +1,3 @@
-"""Notifications."""
-
 from textual.app import App
 
 
@@ -7,6 +5,7 @@ class NotifyMixin:
     """Mixin class to add notify methods."""
 
     app: App
+    """Textual application."""
 
     def notify_info(self, message: str, timeout: float = 3.0) -> None:
         """Notify information."""

@@ -1,5 +1,3 @@
-"""Modal screen."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -22,6 +20,7 @@ class Modal(ModalScreen):
         super().__init__(*args, **kwargs)
         if isinstance(text, str):
             self.text = Text.from_ansi(text)
+            """Text content."""
         else:
             self.text = text
 
@@ -39,6 +38,7 @@ class ModalMixin:
     """Mixin class to add a modal method."""
 
     app: App
+    """Textual application."""
 
     def modal(self, text: str) -> None:
         """Push a modal."""

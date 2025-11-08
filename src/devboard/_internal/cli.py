@@ -1,5 +1,3 @@
-"""Module that contains the command line application."""
-
 # Why does this file exist, and why not put this in `__main__`?
 #
 # You might be tempted to import things from `__main__` later,

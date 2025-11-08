@@ -101,7 +101,7 @@ def test_exposed_objects(modulelevel_internal_objects: list[griffe.Object | grif
     not_exposed = [
         obj.path
         for obj in modulelevel_internal_objects
-        if obj.name not in devboard.__all__ or not hasattr(devboard, obj.name)
+        if (obj.name not in devboard.__all__ or not hasattr(devboard, obj.name)) and ".default_board." not in obj.path
     ]
     assert not not_exposed, "Objects not exposed:\n" + "\n".join(sorted(not_exposed))
 
@@ -135,7 +135,7 @@ def test_single_locations(public_api: griffe.Module) -> None:
 
 def test_api_matches_inventory(inventory: Inventory, public_objects: list[griffe.Object | griffe.Alias]) -> None:
     """All public objects are added to the inventory."""
-    ignore_names = {"__getattr__", "__init__", "__repr__", "__str__", "__post_init__"}
+    ignore_names = {"__getattr__", "__init__", "__repr__", "__str__", "__post_init__", "__rich__"}
     not_in_inventory = [
         f"{obj.relative_filepath}:{obj.lineno}: {obj.path}"
         for obj in public_objects

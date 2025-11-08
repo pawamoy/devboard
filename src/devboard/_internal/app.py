@@ -1,5 +1,3 @@
-"""The Textual application."""
-
 from __future__ import annotations
 
 import os
@@ -28,18 +26,21 @@ else:
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-DEBUG = os.getenv("DEBUG", "0") == "1"
+_DEBUG = os.getenv("DEBUG", "0") == "1"
 
 
 class Devboard(App, ModalMixin):
     """The Devboard application."""
 
     CSS_PATH = Path(__file__).parent / "devboard.tcss"
+    """Path to the CSS file."""
+
     BINDINGS: ClassVar = [
         Binding("F5, ctrl+r", "refresh", "Refresh"),
         Binding("question_mark", "show_help", "Help"),
         Binding("ctrl+q, q, escape", "exit", "Exit", key_display="Q"),
     ]
+    """Application key bindings."""
 
     # --------------------------------------------------
     # Textual methods.

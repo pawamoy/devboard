@@ -3,8 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from devboard import ToCommit, ToPull, ToPush, ToRelease
-from devboard import Project as BaseProject
+from devboard._internal.default_board import ToCommit, ToPull, ToPush, ToRelease
+from devboard._internal.projects import Project as BaseProject
 
 BASE_DIR = Path(os.environ["PROJECTS_DIR"])
 

@@ -1,5 +1,3 @@
-"""Git utilities."""
-
 from __future__ import annotations
 
 import contextlib
@@ -44,7 +42,7 @@ class Project:
     """
 
     LOCKS: ClassVar[dict[Project, Lock]] = defaultdict(Lock)
-
+    """Locks for projects, to avoid concurrent operations."""
     DEFAULT_BRANCHES: ClassVar[tuple[str, ...]] = ("main", "master")
     """Name of common default branches. Mainly useful to compute unreleased commits."""
     path: Path

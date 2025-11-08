@@ -1,5 +1,3 @@
-"""The Textual application."""
-
 from __future__ import annotations
 
 import os
@@ -21,7 +19,7 @@ if TYPE_CHECKING:
 
     from textual.app import ComposeResult
 
-DEBUG = os.getenv("DEBUG", "0") == "1"
+_DEBUG = os.getenv("DEBUG", "0") == "1"
 
 
 class Row(SelectableRow):
@@ -117,7 +115,7 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     def _populate(self) -> list[tuple[Any, ...]]:
         rows = []
-        if DEBUG:
+        if _DEBUG:
             for project in self.list_projects():
                 rows.extend(self.populate_rows(project))
         else:

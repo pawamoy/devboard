@@ -1,9 +1,3 @@
-"""User configuration of columns.
-
-The only object that must be defined in this module is `columns`,
-which is a list of `Column` instances.
-"""
-
 from __future__ import annotations
 
 import os
@@ -12,8 +6,7 @@ from typing import Any, ClassVar
 
 from git import TYPE_CHECKING, GitCommandError
 
-from devboard import Column, Row
-from devboard import Project as BaseProject
+from devboard import Column, Project, Row
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -26,7 +19,7 @@ and has no special meaning for Devboard.
 """
 
 
-class Project(BaseProject):
+class MyProject(Project):
     """Customized project class.
 
     The original `Project` is sub-classed for demonstration purpose.
@@ -38,7 +31,7 @@ class Project(BaseProject):
     """
 
     @classmethod
-    def list_projects(cls) -> Iterator[Project]:
+    def list_projects(cls) -> Iterator[MyProject]:
         """List all Git projects in a base directory."""
         for filedir in BASE_DIR.iterdir():
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
@@ -56,12 +49,12 @@ class ToCommit(Column):
         ("d", "apply('diff')", "Show diff"),
     ]
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_projects(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from Project.list_projects()
+        yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
         """Scan a project, feeding rows to the table.
 
         It returns a single row with the project and its status line.
@@ -93,12 +86,12 @@ class ToPull(Column):
         ("d", "apply('delete')", "Delete branch"),
     ]
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_projects(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from Project.list_projects()
+        yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
         """Scan a project, feeding rows to the table.
 
         It returns multiple rows, one for each branch having commits to pull from the remote.
@@ -139,12 +132,12 @@ class ToPush(Column):
         ("p", "apply('push')", "Push"),
     ]
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_projects(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from Project.list_projects()
+        yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
         """Scan a project, feeding rows to the table.
 
         It returns multiple rows, one for each branch having commits to push to the remote.
@@ -179,12 +172,12 @@ class ToRelease(Column):
     TITLE = "To Release"
     HEADERS = ("Project", "Details")
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_projects(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from Project.list_projects()
+        yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
         """Scan a project, feeding rows to the table.
 
         It returns a single row with the project and a summary of commit types.
