@@ -8,7 +8,7 @@ Why does this file exist, and why `__main__`? For more info, read:
 
 import sys
 
-from devboard.cli import main
+from devboard._internal.cli import main
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

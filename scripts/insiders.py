@@ -1,4 +1,4 @@
-"""Functions related to Insiders funding goals."""
+# Functions related to Insiders funding goals.
 
 from __future__ import annotations
 
@@ -10,17 +10,20 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from itertools import chain
 from pathlib import Path
-from typing import Iterable, cast
+from typing import TYPE_CHECKING, cast
 from urllib.error import HTTPError
 from urllib.parse import urljoin
 from urllib.request import urlopen
 
 import yaml
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
 logger = logging.getLogger(f"mkdocs.logs.{__name__}")
 
 
-def human_readable_amount(amount: int) -> str:  # noqa: D103
+def human_readable_amount(amount: int) -> str:
     str_amount = str(amount)
     if len(str_amount) >= 4:  # noqa: PLR2004
         return f"{str_amount[: len(str_amount) - 3]},{str_amount[-3:]}"
@@ -29,16 +32,12 @@ def human_readable_amount(amount: int) -> str:  # noqa: D103
 
 @dataclass
 class Project:
-    """Class representing an Insiders project."""
-
     name: str
     url: str
 
 
 @dataclass
 class Feature:
-    """Class representing an Insiders feature."""
-
     name: str
     ref: str | None
     since: date | None
@@ -65,8 +64,6 @@ class Feature:
 
 @dataclass
 class Goal:
-    """Class representing an Insiders goal."""
-
     name: str
     amount: int
     features: list[Feature]
@@ -91,16 +88,6 @@ class Goal:
 
 
 def load_goals(data: str, funding: int = 0, project: Project | None = None) -> dict[int, Goal]:
-    """Load goals from JSON data.
-
-    Parameters:
-        data: The JSON data.
-        funding: The current total funding, per month.
-        origin: The origin of the data (URL).
-
-    Returns:
-        A dictionaries of goals, keys being their target monthly amount.
-    """
     goals_data = yaml.safe_load(data)["goals"]
     return {
         amount: Goal(
@@ -148,15 +135,6 @@ def _load_goals(source: str | tuple[str, str, str], funding: int = 0) -> dict[in
 
 
 def funding_goals(source: str | list[str | tuple[str, str, str]], funding: int = 0) -> dict[int, Goal]:
-    """Load funding goals from a given data source.
-
-    Parameters:
-        source: The data source (local file path or URL).
-        funding: The current total funding, per month.
-
-    Returns:
-        A dictionaries of goals, keys being their target monthly amount.
-    """
     if isinstance(source, str):
         return _load_goals_from_disk(source, funding)
     goals = {}
@@ -171,18 +149,10 @@ def funding_goals(source: str | list[str | tuple[str, str, str]], funding: int =
 
 
 def feature_list(goals: Iterable[Goal]) -> list[Feature]:
-    """Extract feature list from funding goals.
-
-    Parameters:
-        goals: A list of funding goals.
-
-    Returns:
-        A list of features.
-    """
     return list(chain.from_iterable(goal.features for goal in goals))
 
 
-def load_json(url: str) -> str | list | dict:  # noqa: D103
+def load_json(url: str) -> str | list | dict:
     with urlopen(url) as response:  # noqa: S310
         return json.loads(response.read().decode())
 
