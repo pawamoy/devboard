@@ -1,0 +1,16 @@
+goals:
+  500:
+    name: PlasmaVac User Guide
+    features: []
+  1000:
+    name: GraviFridge Fluid Renewal
+    features: []
+  1500:
+    name: HyperLamp Navigation Tips
+    features:
+    - name: "[Project] A development dashboard for your projects"
+      ref: /
+      since: 2023/11/06
+  2000:
+    name: FusionDrive Ejection Configuration
+    features: []

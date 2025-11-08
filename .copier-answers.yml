@@ -1,0 +1,23 @@
+# Changes here will be overwritten by Copier
+_commit: 1.0.8
+_src_path: gh:pawamoy/copier-uv
+author_email: dev@pawamoy.fr
+author_fullname: Timothée Mazzucotelli
+author_username: pawamoy
+copyright_date: '2023'
+copyright_holder: Timothée Mazzucotelli
+copyright_holder_email: dev@pawamoy.fr
+copyright_license: ISC License
+insiders: true
+insiders_email: insiders@pawamoy.fr
+insiders_repository_name: devboard
+project_description: A development dashboard for your projects.
+project_name: Devboard
+public_release: false
+python_package_command_line_name: devboard
+python_package_distribution_name: devboard
+python_package_import_name: devboard
+repository_name: devboard
+repository_namespace: pawamoy
+repository_provider: github.com
+

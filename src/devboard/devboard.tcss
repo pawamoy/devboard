@@ -1,0 +1,40 @@
+Screen {
+    layout: horizontal;
+}
+
+Modal {
+    align: center middle;
+}
+
+#modal-contents {
+    padding: 0 1;
+    width: 80%;
+    height: 80%;
+    border: thick $panel 80%;
+    background: $surface;
+}
+
+Column {
+    height: 1fr;
+    background: $background;
+    border: solid $primary;
+}
+
+.column-title {
+    text-align: center;
+    text-style: bold underline;
+}
+
+Column:focus-within .column-title {
+    background: $accent;
+}
+
+DataTable {
+    height: 1fr;
+    width: 1fr;
+    scrollbar-size: 0 0;
+}
+
+.datatable--header {
+    background: $background;
+}
