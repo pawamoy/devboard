@@ -8,12 +8,9 @@ copyright_date: '2023'
 copyright_holder: Timothée Mazzucotelli
 copyright_holder_email: dev@pawamoy.fr
 copyright_license: ISC
-insiders: true
-insiders_email: insiders@pawamoy.fr
-insiders_repository_name: devboard
+insiders: false
 project_description: A development dashboard for your projects.
 project_name: Devboard
-public_release: false
 python_package_command_line_name: devboard
 python_package_distribution_name: devboard
 python_package_import_name: devboard
