@@ -7,7 +7,7 @@ from typing import Hashable
 from failprint import Capture
 from textual._doc import take_svg_screenshot
 
-from devboard._internal.app import Devboard
+from devboard import Devboard
 
 TMP_DIR = Path(gettempdir(), "devboard")
 SCREENSHOT_CACHE = TMP_DIR / "screenshots"

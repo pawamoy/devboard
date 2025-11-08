@@ -12,8 +12,8 @@ from typing import Any, ClassVar
 
 from git import TYPE_CHECKING, GitCommandError
 
-from devboard._internal.board import Column, Row
-from devboard._internal.projects import Project as BaseProject
+from devboard import Column, Row
+from devboard import Project as BaseProject
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
