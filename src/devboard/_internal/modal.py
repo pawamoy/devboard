@@ -31,7 +31,7 @@ class Modal(ModalScreen):
 
     def on_key(self, event: Key) -> None:
         """Dismiss on any unbound key."""
-        if not any(bindings.keys.get(event.key) for _, bindings in self.app._modal_binding_chain):
+        if not any(bindings.keys.get(event.key) for _, bindings in self.app._modal_binding_chain):  # type: ignore[attr-defined]
             self.dismiss()
 
 

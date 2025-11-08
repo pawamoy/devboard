@@ -7,7 +7,7 @@ import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, ClassVar, Iterable, Iterator
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from appdirs import user_config_dir
 from rich.markdown import Markdown
@@ -16,8 +16,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer
 
-from devboard.board import Column, DataTable
-from devboard.modal import Modal, ModalMixin
+from devboard._internal.board import Column, DataTable
+from devboard._internal.modal import Modal, ModalMixin
 
 # TODO: Remove once support for Python 3.10 is dropped.
 if sys.version_info >= (3, 11):
@@ -25,10 +25,13 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
 
-class Devboard(App, ModalMixin):  # type: ignore[misc]
+class Devboard(App, ModalMixin):
     """The Devboard application."""
 
     CSS_PATH = Path(__file__).parent / "devboard.tcss"
@@ -139,7 +142,7 @@ class Devboard(App, ModalMixin):  # type: ignore[misc]
         return user_config.columns
 
     @staticmethod
-    def _bindings_help(cls: type, *, search_up: bool = False) -> Iterator[str]:
+    def _bindings_help(cls: type, *, search_up: bool = False) -> Iterator[str]:  # noqa: PLW0211
         bindings = cls.BINDINGS if search_up else cls.__dict__.get("BINDINGS", [])  # type: ignore[attr-defined]
         for binding in bindings:
             if isinstance(binding, tuple):

@@ -19,8 +19,8 @@ from typing import Any
 
 from appdirs import user_config_dir
 
-from devboard import debug
-from devboard.app import Devboard
+from devboard._internal import debug
+from devboard._internal.app import Devboard
 
 
 class _DebugInfo(argparse.Action):
@@ -28,7 +28,7 @@ class _DebugInfo(argparse.Action):
         super().__init__(nargs=nargs, **kwargs)
 
     def __call__(self, *args: Any, **kwargs: Any) -> None:  # noqa: ARG002
-        debug.print_debug_info()
+        debug._print_debug_info()
         sys.exit(0)
 
 
@@ -40,7 +40,7 @@ def get_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(prog="devboard")
     parser.add_argument("--show-config-dir", action="store_true", help="Show Devboard's configuration directory.")
-    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {debug.get_version()}")
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {debug._get_version()}")
     parser.add_argument("--debug-info", action=_DebugInfo, help="Print debug information.")
     parser.add_argument("board", nargs="?", default=None, help="Board name or path.")
     return parser

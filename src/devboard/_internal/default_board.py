@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, ClassVar, Iterator
+from typing import Any, ClassVar
 
-from git import GitCommandError
+from git import TYPE_CHECKING, GitCommandError
 
-from devboard.board import Column, Row
-from devboard.projects import Project as BaseProject
+from devboard._internal.board import Column, Row
+from devboard._internal.projects import Project as BaseProject
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 BASE_DIR = Path(os.getenv("DEVBOARD_PROJECTS", Path.home() / "dev")).expanduser()
 """The base directory containing all your Git projects.
@@ -190,7 +193,12 @@ class ToRelease(Column):
         by_type = dict.fromkeys(commit_types, 0)
         for commit in project.unreleased():
             for commit_type in commit_types:
-                if commit.summary.startswith(f"{commit_type}:"):
+                summary = (
+                    commit.summary
+                    if isinstance(commit.summary, str)
+                    else bytes(commit.summary).decode("utf-8", errors="ignore")
+                )
+                if summary.startswith(f"{commit_type}:"):
                     by_type[commit_type] += 1
         parts = [f"{by_type[ct]}{commit_types[ct]}" for ct in commit_types if by_type[ct]]
         if parts:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Iterable, Iterator
+from typing import TYPE_CHECKING, ClassVar
 
 from textual.binding import Binding
 from textual.coordinate import Coordinate
@@ -11,6 +11,8 @@ from textual.widgets import DataTable
 from textual.widgets.data_table import CellDoesNotExist, RowKey
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
     from textual.app import App
 
 

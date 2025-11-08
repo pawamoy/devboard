@@ -5,18 +5,20 @@ from __future__ import annotations
 import os
 from functools import partial
 from multiprocessing import Pool
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 from textual import work
 from textual.containers import Container
 from textual.widgets import Static
 
-from devboard.datatable import SelectableRow, SelectableRowsDataTable
-from devboard.modal import ModalMixin
-from devboard.notifications import NotifyMixin
-from devboard.projects import Project
+from devboard._internal.datatable import SelectableRow, SelectableRowsDataTable
+from devboard._internal.modal import ModalMixin
+from devboard._internal.notifications import NotifyMixin
+from devboard._internal.projects import Project
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from textual.app import ComposeResult
 
 DEBUG = os.getenv("DEBUG", "0") == "1"
@@ -41,7 +43,7 @@ class DataTable(SelectableRowsDataTable):
     """The class to instantiate rows."""
 
 
-class Column(Container, ModalMixin, NotifyMixin):  # type: ignore[misc]
+class Column(Container, ModalMixin, NotifyMixin):
     """A Devboard column."""
 
     TITLE: str = ""
@@ -73,7 +75,7 @@ class Column(Container, ModalMixin, NotifyMixin):  # type: ignore[misc]
         selected_rows = list(self.table.selected_rows) or [self.table.current_row]
         if self.THREADED:
             for row in selected_rows:
-                self.run_worker(partial(self.apply, action=action, row=row), thread=True)
+                self.run_worker(partial(self.apply, action=action, row=row), thread=True)  # type: ignore[arg-type]
         else:
             for row in selected_rows:
                 self.apply(action=action, row=row)  # type: ignore[arg-type]
@@ -109,7 +111,7 @@ class Column(Container, ModalMixin, NotifyMixin):  # type: ignore[misc]
             title: Static = self.query_one(".column-title")  # type: ignore[assignment]
             self.styles.width = 3
             title.styles.text_style = "bold"
-            title.renderable = "▼ " + self.TITLE
+            title.renderable = "▼ " + self.TITLE  # type: ignore[attr-defined]
             self.table.styles.display = "none"
         table.loading = False
 

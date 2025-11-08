@@ -9,9 +9,12 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import ClassVar, Iterator
+from typing import TYPE_CHECKING, ClassVar
 
-from git import Commit, GitCommandError, Head, Repo, TagReference  # type: ignore[attr-defined]
+from git import Commit, GitCommandError, Head, Repo, TagReference
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @dataclass
@@ -70,11 +73,11 @@ class Project:
         """Status of the project."""
         diff = self.repo.index.diff(None)
         return Status(
-            added=[Path(added) for added in diff.iter_change_type("A")],
-            deleted=[Path(deleted.a_path) for deleted in diff.iter_change_type("D")],
-            modified=[Path(modified.a_path) for modified in diff.iter_change_type("M")],
-            renamed=[Path(renamed) for renamed in diff.iter_change_type("R")],
-            typechanged=[Path(typechanged) for typechanged in diff.iter_change_type("T")],
+            added=[Path(added.b_path) for added in diff.iter_change_type("A") if added.b_path],
+            deleted=[Path(deleted.a_path) for deleted in diff.iter_change_type("D") if deleted.a_path],
+            modified=[Path(modified.a_path) for modified in diff.iter_change_type("M") if modified.a_path],
+            renamed=[Path(renamed.b_path) for renamed in diff.iter_change_type("R") if renamed.b_path],
+            typechanged=[Path(typechanged.a_path) for typechanged in diff.iter_change_type("T") if typechanged.a_path],
             untracked=[Path(untracked) for untracked in self.repo.untracked_files],
         )
 
@@ -100,7 +103,7 @@ class Project:
     def unpushed(self, remote: str = "origin") -> dict[str, int]:
         """Number of unpushed commits, per branch."""
         result = {}
-        for branch in self.repo.branches:  # type: ignore[attr-defined]
+        for branch in self.repo.branches:
             with contextlib.suppress(GitCommandError):
                 result[branch.name] = len(list(self.repo.iter_commits(f"{remote}/{branch.name}..{branch.name}")))
         return result
@@ -108,7 +111,7 @@ class Project:
     def unpulled(self, remote: str = "origin") -> dict[str, int]:
         """Number of unpulled commits, per branch."""
         result = {}
-        for branch in self.repo.branches:  # type: ignore[attr-defined]
+        for branch in self.repo.branches:
             with contextlib.suppress(GitCommandError):
                 result[branch.name] = len(list(self.repo.iter_commits(f"{branch.name}..{remote}/{branch.name}")))
         return result
@@ -142,7 +145,7 @@ class Project:
         if branch == current:
             yield
             return
-        self.repo.branches[branch].checkout()  # type: ignore[index]
+        self.repo.branches[branch].checkout()
         try:
             yield
         finally:
