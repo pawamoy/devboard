@@ -46,7 +46,7 @@ Gitter = "https://gitter.im/devboard/community"
 Funding = "https://github.com/sponsors/pawamoy"
 
 [project.scripts]
-devboard = "devboard.cli:main"
+devboard = "devboard:main"
 
 [tool.pdm.version]
 source = "call"
