@@ -67,6 +67,16 @@ and change the board value to "tutorial":
 board = "tutorial"
 ```
 
+The configuration file supports one more setting: `workers`,
+the number of projects Devboard scans concurrently (4 by default).
+Raise it if your repositories live on a fast SSD,
+lower it if they live on a spinning disk and cold starts feel slow:
+
+```toml
+board = "tutorial"
+workers = 4
+```
+
 Now open the `tutorial.py` file in your favorite editor,
 and you'll be ready to start building.
 
@@ -150,7 +160,7 @@ Of course, it doesn't know what to do with these projects.
 We will tell it how to scan a project to add rows to our table
 by implementing the `populate_rows` method.
 
-```python hl_lines="7 15-17"
+```python hl_lines="7 15-18"
 from pathlib import Path
 from devboard import Column, Project
 
@@ -167,7 +177,8 @@ class ToCommit(Column):
 
     @staticmethod
     def populate_rows(project):
-        return [(project, project.status_line)] if project.is_dirty else []
+        status_line = project.status_line
+        return [(project, status_line)] if status_line else []
 
 
 columns = [
@@ -180,8 +191,8 @@ We declare the table headers with the `HEADERS` class variable.
 Then we build and return rows in the `populate_rows` method.
 The number of element in each row must be equal to the number of headers.
 Fortunately, the status line functionality is built into [`devboard.Project`][],
-so we can use it directly. We don't bother computing a status line
-if the project is not "dirty", i.e. has no current modifications.
+so we can use it directly. An empty status line means the project is clean
+(no current modifications), in which case we don't add any row.
 
 You may have noticed that the method is a `staticmethod`.
 This is required by Devboard for technical reasons that are beyond this tutorial's scope.
@@ -199,7 +210,7 @@ and the output of `git diff` when hitting ++d++.
 We do that by declaring the `BINDINGS` class variable,
 and by implementing the `apply` method:
 
-```python hl_lines="2 8-12 24-29"
+```python hl_lines="2 8-12 26-32"
 from pathlib import Path
 from devboard import Column, Project, Row
 
@@ -221,14 +232,16 @@ class ToCommit(Column):
 
     @staticmethod
     def populate_rows(project):
-        return [(project, project.status_line)] if project.is_dirty else []
+        status_line = project.status_line
+        return [(project, status_line)] if status_line else []
 
     def apply(self, action, row):
         if action == "status":
             self.modal(text=row.project.repo.git(c="color.status=always").status())
-        if action == "diff":
+        elif action == "diff":
             self.modal(text=row.project.repo.git(c="color.ui=always").diff())
-        raise ValueError(f"Unknown action '{action}'")```
+        else:
+            raise ValueError(f"Unknown action '{action}'")
 
 
 columns = [

@@ -59,7 +59,8 @@ class ToCommit(Column):
 
         It returns a single row with the project and its status line.
         """
-        return [(project, project.status_line)] if project.is_dirty else []
+        status_line = project.status_line
+        return [(project, status_line)] if status_line else []
 
     def apply(self, action: str, row: Row) -> None:
         """Process actions.
@@ -71,9 +72,10 @@ class ToCommit(Column):
         """
         if action == "status":
             self.modal(text=row.project.repo.git(c="color.status=always").status())
-        if action == "diff":
+        elif action == "diff":
             self.modal(text=row.project.repo.git(c="color.ui=always").diff())
-        raise ValueError(f"Unknown action '{action}'")
+        else:
+            raise ValueError(f"Unknown action '{action}'")
 
 
 class ToPull(Column):

@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import os
 from functools import partial
-from multiprocessing import Pool
 from typing import TYPE_CHECKING, Any
 
-from textual import work
 from textual.containers import Container
 from textual.widgets import Static
 
@@ -18,8 +15,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from textual.app import ComposeResult
-
-_DEBUG = os.getenv("DEBUG", "0") == "1"
 
 
 class Row(SelectableRow):
@@ -61,10 +56,6 @@ class Column(Container, ModalMixin, NotifyMixin):
         yield Static("▶ " + self.TITLE, classes="column-title")
         yield DataTable(id="table")
 
-    def on_mount(self) -> None:
-        """Fill data table."""
-        self.update()
-
     # --------------------------------------------------
     # Binding actions.
     # --------------------------------------------------
@@ -87,42 +78,48 @@ class Column(Container, ModalMixin, NotifyMixin):
         return self.query_one("#table")  # type: ignore[return-value]
 
     def update(self) -> None:
-        """Update the column (recompute data)."""
-        table = self.query_one(DataTable)
-        if table.loading:
-            return
-        table.loading = True
+        """Update the column (ask the app to recompute its data)."""
+        scan = getattr(self.app, "scan", None)
+        if scan is not None:
+            scan([self])
+
+    def _reset(self) -> None:
+        """Prepare the column for (re)population: restore styles, clear the table, show a loading indicator."""
+        title: Static = self.query_one(".column-title")  # type: ignore[assignment]
+        title.styles.text_style = None
+        title.update("▶ " + self.TITLE)
+        self.styles.width = None
+        table = self.table
+        table.styles.display = "block"
         table.clear(columns=True)
         table.cursor_type = "row"
-        self._load_data(table)
+        for header in self.HEADERS:
+            table.add_column(header, key=header.lower())
+        table.loading = True
 
-    @work(thread=True)
-    def _load_data(self, table: DataTable) -> None:
-        if rows := self._populate():
-            # TODO: Reset styles.
-            for column in self.HEADERS:
-                table.add_column(column, key=column.lower())
-            table.add_rows(rows)
-            table.sort(self.HEADERS[0].lower())
-            table.refresh(layout=True)
-        else:
-            title: Static = self.query_one(".column-title")  # type: ignore[assignment]
-            self.styles.width = 3
-            title.styles.text_style = "bold"
-            title.renderable = "▼ " + self.TITLE  # type: ignore[attr-defined]
-            self.table.styles.display = "none"
+    def _extend(self, rows: Iterable[tuple[Any, ...]]) -> None:
+        """Add rows to the table, keeping it sorted."""
+        table = self.table
         table.loading = False
+        table.add_rows(rows)
+        if self.HEADERS:
+            table.sort(self.HEADERS[0].lower())
 
-    def _populate(self) -> list[tuple[Any, ...]]:
-        rows = []
-        if _DEBUG:
-            for project in self.list_projects():
-                rows.extend(self.populate_rows(project))
-        else:
-            with Pool() as pool:
-                for result in pool.map(self.populate_rows, self.list_projects()):
-                    rows.extend(result)
-        return rows
+    def _mark_cached(self) -> None:
+        """Show that the column currently displays cached (possibly stale) data."""
+        title: Static = self.query_one(".column-title")  # type: ignore[assignment]
+        title.update(f"▶ {self.TITLE} [dim](cached)[/dim]")
+
+    def _finalize(self) -> None:
+        """Finish a population cycle, collapsing the column if it's empty."""
+        table = self.table
+        table.loading = False
+        if not table.row_count:
+            title: Static = self.query_one(".column-title")  # type: ignore[assignment]
+            title.styles.text_style = "bold"
+            title.update("▼ " + self.TITLE)
+            self.styles.width = 3
+            table.styles.display = "none"
 
     # --------------------------------------------------
     # Methods to implement in subclasses.

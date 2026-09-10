@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import contextlib
 import re
 from collections import defaultdict
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar
@@ -51,9 +51,9 @@ class Project:
     def __str__(self) -> str:
         return self.name
 
-    @property
+    @cached_property
     def repo(self) -> Repo:
-        """GitPython's `Repo` object."""
+        """GitPython's `Repo` object (cached per instance)."""
         return Repo(self.path)
 
     @property
@@ -64,20 +64,37 @@ class Project:
     @property
     def is_dirty(self) -> bool:
         """Whether the project is in a "dirty" state (uncommitted modifications)."""
-        return self.repo.is_dirty(untracked_files=True)
+        return bool(self.repo.git.status(porcelain=True))
 
     @property
     def status(self) -> Status:
-        """Status of the project."""
-        diff = self.repo.index.diff(None)
-        return Status(
-            added=[Path(added.b_path) for added in diff.iter_change_type("A") if added.b_path],
-            deleted=[Path(deleted.a_path) for deleted in diff.iter_change_type("D") if deleted.a_path],
-            modified=[Path(modified.a_path) for modified in diff.iter_change_type("M") if modified.a_path],
-            renamed=[Path(renamed.b_path) for renamed in diff.iter_change_type("R") if renamed.b_path],
-            typechanged=[Path(typechanged.a_path) for typechanged in diff.iter_change_type("T") if typechanged.a_path],
-            untracked=[Path(untracked) for untracked in self.repo.untracked_files],
-        )
+        """Status of the project.
+
+        Computed from a single `git status --porcelain` call,
+        which is much cheaper than diffing index and work tree separately.
+        Each file is counted once, in the first matching category:
+        untracked, renamed, added, deleted, type-changed, modified.
+        """
+        status = Status(added=[], deleted=[], modified=[], renamed=[], typechanged=[], untracked=[])
+        entries = iter(self.repo.git.status(porcelain=True, z=True).split("\x00"))
+        for entry in entries:
+            if not entry:
+                continue
+            state, path = entry[:2], Path(entry[3:])
+            if state == "??":
+                status.untracked.append(path)
+            elif "R" in state:
+                status.renamed.append(path)
+                next(entries, None)  # Discard the pre-rename path.
+            elif "A" in state:
+                status.added.append(path)
+            elif "D" in state:
+                status.deleted.append(path)
+            elif "T" in state:
+                status.typechanged.append(path)
+            else:
+                status.modified.append(path)
+        return status
 
     @property
     def status_line(self) -> str:
@@ -98,21 +115,35 @@ class Project:
             parts.append(f"{untracked}U")
         return " ".join(parts)
 
-    def unpushed(self, remote: str = "origin") -> dict[str, int]:
-        """Number of unpushed commits, per branch."""
+    @cached_property
+    def _tracking(self) -> dict[str, tuple[int, int]]:
+        """Ahead/behind counts per branch, relative to its upstream.
+
+        Computed with a single `git for-each-ref` call instead of
+        one `git rev-list` subprocess per branch.
+        """
+        output = self.repo.git.for_each_ref("refs/heads", format="%(refname:short)%00%(upstream:track,nobracket)")
         result = {}
-        for branch in self.repo.branches:
-            with contextlib.suppress(GitCommandError):
-                result[branch.name] = len(list(self.repo.iter_commits(f"{remote}/{branch.name}..{branch.name}")))
+        for line in output.splitlines():
+            branch, _, track = line.partition("\x00")
+            ahead = behind = 0
+            if track and track != "gone":
+                for part in track.split(", "):
+                    kind, _, count = part.partition(" ")
+                    if kind == "ahead":
+                        ahead = int(count)
+                    elif kind == "behind":
+                        behind = int(count)
+            result[branch] = (ahead, behind)
         return result
 
-    def unpulled(self, remote: str = "origin") -> dict[str, int]:
-        """Number of unpulled commits, per branch."""
-        result = {}
-        for branch in self.repo.branches:
-            with contextlib.suppress(GitCommandError):
-                result[branch.name] = len(list(self.repo.iter_commits(f"{branch.name}..{remote}/{branch.name}")))
-        return result
+    def unpushed(self) -> dict[str, int]:
+        """Number of unpushed commits (compared to the branch upstream), per branch."""
+        return {branch: ahead for branch, (ahead, _) in self._tracking.items()}
+
+    def unpulled(self) -> dict[str, int]:
+        """Number of unpulled commits (compared to the branch upstream), per branch."""
+        return {branch: behind for branch, (_, behind) in self._tracking.items()}
 
     @property
     def branch(self) -> Head:
@@ -123,7 +154,7 @@ class Project:
     def default_branch(self) -> str:
         """Default branch (or main branch), as checked out when cloning."""
         for branch in self.DEFAULT_BRANCHES:
-            if branch in self.repo.references:
+            if branch in self.repo.heads:
                 return branch
         try:
             origin = self.repo.git.remote("show", "origin")
@@ -164,23 +195,22 @@ class Project:
         self.repo.delete_head(branch, force=True)
 
     def unreleased(self, branch: str | None = None) -> list[Commit]:
-        """List unreleased commits."""
-        commits = []
+        """List unreleased commits (commits since the latest tag reachable from the branch)."""
         if branch is None:
             try:
                 branch = self.default_branch
             except ValueError:
                 return []
-        iterator = self.repo.iter_commits(branch)
         try:
-            latest_tagged_commit = self.latest_tag.commit
-        except IndexError:
-            return list(iterator)
-        for commit in iterator:
-            if commit == latest_tagged_commit:
-                break
-            commits.append(commit)
-        return commits
+            latest_tag = self.repo.git.describe(branch, tags=True, abbrev=0)
+        except GitCommandError:
+            rev = branch  # No tag reachable: everything is unreleased.
+        else:
+            rev = f"{latest_tag}..{branch}"
+        try:
+            return list(self.repo.iter_commits(rev))
+        except GitCommandError:
+            return []
 
     def fetch(self) -> None:
         """Fetch."""
@@ -191,8 +221,15 @@ class Project:
 
     @property
     def latest_tag(self) -> TagReference:
-        """Latest tag."""
-        return sorted(self.repo.tags, key=lambda t: t.commit.committed_datetime)[-1]
+        """Latest tag (by creation date).
+
+        Raises:
+            IndexError: When the repository has no tags.
+        """
+        name = self.repo.git.for_each_ref("refs/tags", sort="-creatordate", count=1, format="%(refname:short)")
+        if not name:
+            raise IndexError(f"No tags in repository {self.name}")
+        return TagReference(self.repo, f"refs/tags/{name}")
 
     def lock(self) -> bool:
         """Lock project."""
