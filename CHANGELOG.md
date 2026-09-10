@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [0.2.0](https://github.com/pawamoy/devboard/releases/tag/0.2.0) - 2026-09-10
+
+<small>[Compare with 0.1.0](https://github.com/pawamoy/devboard/compare/0.1.0...0.2.0)</small>
+
+The project is update to support latest version of Textual.
+
+### Bug Fixes
+
+- Prevent event propagation from modal ([e61eadd](https://github.com/pawamoy/devboard/commit/e61eaddaca58f91c02150c2f11465fcb82d576d1) by Timothée Mazzucotelli).
+- Fix script entrypoint ([acb054d](https://github.com/pawamoy/devboard/commit/acb054d11395861c34a60e2a60711379a3b48019) by Timothée Mazzucotelli).
+
+### Performance Improvements
+
+- Start faster (cache), scan faster ([9a740e5](https://github.com/pawamoy/devboard/commit/9a740e55aff8add3016b438d1b0912376a5552aa) by Timothée Mazzucotelli).
+
 ## [0.1.0](https://github.com/pawamoy/devboard/releases/tag/0.1.0) - 2025-11-08
 
 <small>[Compare with first commit](https://github.com/pawamoy/devboard/compare/286120e957168a9162d5a8dc19c7dd72fb0a6d65...0.1.0)</small>
