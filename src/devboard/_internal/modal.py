@@ -55,6 +55,7 @@ class Modal(ModalScreen):
         else:
             is_bound = event.key in active_bindings
         if not is_bound:
+            event.stop()
             self.dismiss()
 
 
