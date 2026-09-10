@@ -1109,14 +1109,18 @@ By default, it looks into the <code>dev</code> folder in your home/user director
 To change that directory, you can modify it directly in the default board,
 located in your user configuration directory (use <code>devboard --show-config-dir</code>),
 or you can set the <code>DEVBOARD_PROJECTS</code> environment variable:</p>
-<p>/// tab | Linux / Mac OS
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Linux / Mac OS</label><label for="__tabbed_1_2">Windows</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
 <div class="highlight"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">DEVBOARD_PROJECTS</span><span class="o">=</span>~/path/to/your/projects
 </code></pre></div>
-///</p>
-<p>/// tab | Windows
+</div>
+<div class="tabbed-block">
 <div class="highlight"><pre><span></span><code>setx<span class="w"> </span>DEVBOARD_PROJECTS<span class="w"> </span>~/path/to/your/projects
 </code></pre></div>
-///</p>
+</div>
+</div>
+</div>
 <h3 id="informative-actions">Informative actions<a class="headerlink" href="#informative-actions" title="Permanent link">¤</a></h3>
 <p>Once your board displays some rows in the "To Commit" column,
 try showing the Git status or diff with <span class="keys"><kbd class="key-s">S</kbd></span> and <span class="keys"><kbd class="key-d">D</kbd></span> keys.</p>
