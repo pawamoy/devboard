@@ -93,12 +93,12 @@ class Devboard(App, ModalMixin):
             workers: How many projects to scan concurrently. Overrides the `workers` config setting.
         """
         super().__init__(*args, **kwargs)
-        self._board = board
-        self._board_key = str(board)
-        self._config_file = Path(user_config_dir(), "devboard", "config.toml")
-        self._background_tasks = background_tasks
-        self._scan_workers = workers
-        self._scanning = False
+        self._board: str | Path | None = board
+        self._board_key: str = str(board)
+        self._config_file: Path = Path(user_config_dir(), "devboard", "config.toml")
+        self._background_tasks: bool = background_tasks
+        self._scan_workers: int | None = workers
+        self._scanning: bool = False
 
     def compose(self) -> ComposeResult:
         """Compose the layout."""
@@ -281,7 +281,7 @@ class Devboard(App, ModalMixin):
         board: str | Path
         try:
             with self._config_file.open("rb") as config_file:
-                config = tomllib.load(config_file)
+                config: dict[str, Any] = tomllib.load(config_file)
         except FileNotFoundError:
             self._config_file.parent.mkdir(parents=True, exist_ok=True)
             self._config_file.write_text('board = "default"')
@@ -312,7 +312,7 @@ class Devboard(App, ModalMixin):
 
     @staticmethod
     def _bindings_help(cls: type, *, search_up: bool = False) -> Iterator[str]:  # noqa: PLW0211
-        bindings = cls.BINDINGS if search_up else cls.__dict__.get("BINDINGS", [])  # type: ignore[attr-defined]
+        bindings = getattr(cls, "BINDINGS", []) if search_up else cls.__dict__.get("BINDINGS", [])
         for binding in bindings:
             if isinstance(binding, tuple):
                 binding = Binding(*binding)  # noqa: PLW2901

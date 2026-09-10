@@ -22,7 +22,7 @@ import re
 from collections import defaultdict
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, total_ordering
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar
@@ -51,7 +51,7 @@ class Status:
     """Untracked files."""
 
 
-@dataclass(eq=True, order=True, frozen=True)
+@total_ordering
 class Project:
     """A class representing development projects.
 
@@ -63,11 +63,18 @@ class Project:
     """Locks for projects, to avoid concurrent operations."""
     DEFAULT_BRANCHES: ClassVar[tuple[str, ...]] = ("main", "master")
     """Name of common default branches. Mainly useful to compute unreleased commits."""
-    path: Path
-    """Path of the project on the file-system."""
+
+    def __init__(self, path: Path) -> None:
+        self.path: Path = path
+        """Path of the project on the file-system."""
 
     def __str__(self) -> str:
         return self.name
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, Project):
+            return NotImplemented
+        return self.name < other.name
 
     @cached_property
     def repo(self) -> Repo:

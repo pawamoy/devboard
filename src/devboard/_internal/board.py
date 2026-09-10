@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from textual.containers import Container
 from textual.widgets import Static
@@ -79,13 +79,15 @@ class Column(Container, ModalMixin, NotifyMixin):
     # --------------------------------------------------
     def action_apply(self, action: str = "default") -> None:
         """Apply an action to selected rows."""
-        selected_rows = list(self.table.selected_rows) or [self.table.current_row]
+        selected_rows = [cast("Row", row) for row in self.table.selected_rows]
+        if not selected_rows:
+            selected_rows.append(cast("Row", self.table.current_row))
         if self.THREADED:
             for row in selected_rows:
-                self.run_worker(partial(self.apply, action=action, row=row), thread=True)  # type: ignore[arg-type]
+                self.run_worker(partial(self.apply, action=action, row=row), thread=True)
         else:
             for row in selected_rows:
-                self.apply(action=action, row=row)  # type: ignore[arg-type]
+                self.apply(action=action, row=row)
 
     # --------------------------------------------------
     # Additional methods/properties.
@@ -93,7 +95,7 @@ class Column(Container, ModalMixin, NotifyMixin):
     @property
     def table(self) -> DataTable:
         """Data table."""
-        return self.query_one("#table")  # type: ignore[return-value]
+        return self.query_one("#table", DataTable)
 
     def update(self) -> None:
         """Update the column (ask the app to recompute its data)."""
@@ -103,7 +105,7 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     def _reset(self) -> None:
         """Prepare the column for (re)population: restore styles, clear the table, show a loading indicator."""
-        title: Static = self.query_one(".column-title")  # type: ignore[assignment]
+        title = self.query_one(".column-title", Static)
         title.styles.text_style = None
         title.update("▶ " + self.TITLE)
         self.styles.width = None
@@ -125,7 +127,7 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     def _mark_cached(self) -> None:
         """Show that the column currently displays cached (possibly stale) data."""
-        title: Static = self.query_one(".column-title")  # type: ignore[assignment]
+        title = self.query_one(".column-title", Static)
         title.update(f"▶ {self.TITLE} [dim](cached)[/dim]")
 
     def _finalize(self) -> None:
@@ -133,7 +135,7 @@ class Column(Container, ModalMixin, NotifyMixin):
         table = self.table
         table.loading = False
         if not table.row_count:
-            title: Static = self.query_one(".column-title")  # type: ignore[assignment]
+            title = self.query_one(".column-title", Static)
             title.styles.text_style = "bold"
             title.update("▼ " + self.TITLE)
             self.styles.width = 3

@@ -72,7 +72,7 @@ class ToCommit(Column):
         yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns a single row with the project and its status line.
@@ -111,7 +111,7 @@ class ToPull(Column):
         yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns multiple rows, one for each branch having commits to pull from the remote.
@@ -157,7 +157,7 @@ class ToPush(Column):
         yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns multiple rows, one for each branch having commits to push to the remote.
@@ -197,7 +197,7 @@ class ToRelease(Column):
         yield from MyProject.list_projects()
 
     @staticmethod
-    def populate_rows(project: MyProject) -> list[tuple[Any, ...]]:  # type: ignore[override]
+    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns a single row with the project and a summary of commit types.

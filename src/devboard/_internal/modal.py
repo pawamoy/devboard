@@ -48,7 +48,13 @@ class Modal(ModalScreen):
 
     def on_key(self, event: Key) -> None:
         """Dismiss on any unbound key."""
-        if not any(bindings.keys.get(event.key) for _, bindings in self.app._modal_binding_chain):  # type: ignore[attr-defined]
+        active_bindings = getattr(self.app, "active_bindings", None)
+        if active_bindings is None:  # Textual < 1.0.
+            legacy_binding_chain = getattr(self.app, "_modal_binding_chain")  # noqa: B009
+            is_bound = any(bindings.keys.get(event.key) for _, bindings in legacy_binding_chain)
+        else:
+            is_bound = event.key in active_bindings
+        if not is_bound:
             self.dismiss()
 
 
