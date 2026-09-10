@@ -1,7 +1,7 @@
 # Devboard
 
 [![ci](https://github.com/pawamoy/devboard/workflows/ci/badge.svg)](https://github.com/pawamoy/devboard/actions?query=workflow%3Aci)
-[![documentation](https://img.shields.io/badge/docs-mkdocs-708FCC.svg?style=flat)](https://pawamoy.github.io/devboard/)
+[![documentation](https://img.shields.io/badge/docs-zensical-FF9100.svg?style=flat)](https://pawamoy.github.io/devboard/)
 [![pypi version](https://img.shields.io/pypi/v/devboard.svg)](https://pypi.org/project/devboard/)
 [![gitter](https://img.shields.io/badge/matrix-chat-4DB798.svg?style=flat)](https://app.gitter.im/#/room/#devboard:gitter.im)
 
@@ -23,4 +23,3 @@ uv tool install devboard
 
 <!-- sponsors-start -->
 <!-- sponsors-end -->
-
