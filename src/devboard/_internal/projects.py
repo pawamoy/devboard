@@ -72,6 +72,10 @@ class Project:
         return self.name
 
     def __lt__(self, other: object) -> bool:
+        """Ordering is based on the project name.
+
+        Total ordering is implemented on projects so they can be sorted in the application tables.
+        """
         if not isinstance(other, Project):
             return NotImplemented
         return self.name < other.name
