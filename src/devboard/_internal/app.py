@@ -161,10 +161,11 @@ class Devboard(App, ModalMixin):
     @work(thread=True)
     def fetch_all(self) -> None:
         """Run `git fetch` in all projects, in background."""
-        projects: set[Project] = set()
+        projects: dict[Path, Project] = {}
         for column in self.query(Column):
-            projects |= set(column.list_projects())
-        self._fetch_projects(projects)
+            for project in column.list_projects():
+                projects.setdefault(project.path.resolve(), project)
+        self._fetch_projects(projects.values())
 
     def _scan(self, columns: list[Column], *, initial: bool) -> None:
         worker = get_current_worker()
