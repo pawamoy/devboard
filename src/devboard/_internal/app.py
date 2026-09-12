@@ -208,11 +208,11 @@ class Devboard(App, ModalMixin):
         try:
             # List projects (fast), deduplicating instances so that anything
             # cached on them (Repo objects, git call results) is shared by all columns.
-            canonical: dict[Project, Project] = {}
+            canonical: dict[Path, Project] = {}
             columns_by_project: dict[Project, list[Column]] = {}
             for column in columns:
                 for project in column.list_projects():
-                    project = canonical.setdefault(project, project)  # noqa: PLW2901
+                    project = canonical.setdefault(project.path.resolve(), project)  # noqa: PLW2901
                     columns_by_project.setdefault(project, []).append(column)
 
             # Display data cached during the previous scan, if any:
