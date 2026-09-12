@@ -28,11 +28,14 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from appdirs import user_config_dir
 from rich.markdown import Markdown
-from textual import work
+from rich.text import Text
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer
-from textual.worker import get_current_worker
+from textual.containers import Vertical
+from textual.message import Message
+from textual.widgets import Footer, Static
+from textual.worker import Worker, get_current_worker
 
 from devboard._internal import cache
 from devboard._internal.board import Column, DataTable
@@ -58,6 +61,15 @@ Kept deliberately low: on cold caches (e.g. right after boot),
 too many concurrent readers make spinning disks seek-thrash,
 which is slower than a few sequential-ish readers.
 """
+
+
+class _TaskProgress(Message):
+    """Report a completed repository task."""
+
+    def __init__(self, worker: Worker, description: str) -> None:
+        super().__init__()
+        self.worker = worker
+        self.description = description
 
 
 class Devboard(App, ModalMixin):
@@ -99,6 +111,8 @@ class Devboard(App, ModalMixin):
         self._background_tasks: bool = background_tasks
         self._scan_workers: int | None = workers
         self._scanning: bool = False
+        self._task_progress: dict[Worker, str] = {}
+        self._progress = Static("", id="task-progress", markup=False)
 
     def compose(self) -> ComposeResult:
         """Compose the layout."""
@@ -107,11 +121,27 @@ class Devboard(App, ModalMixin):
                 yield column
             else:
                 yield column()
-        yield Footer()
+        with Vertical(id="status-bar"):
+            yield self._progress
+            yield Footer()
 
     def on_mount(self) -> None:
         """Populate columns, then run background tasks."""
         self.scan(initial=True)
+
+    @on(_TaskProgress)
+    def _on_task_progress(self, event: _TaskProgress) -> None:
+        if not event.worker.is_finished and not event.worker.is_cancelled:
+            # Keep the most recent completion last, even when workers overlap.
+            self._task_progress.pop(event.worker, None)
+            self._task_progress[event.worker] = event.description
+            self._refresh_task_progress()
+
+    @on(Worker.StateChanged)
+    def _on_task_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        if event.worker.is_finished:
+            self._task_progress.pop(event.worker, None)
+            self._refresh_task_progress()
 
     # --------------------------------------------------
     # Binding actions.
@@ -138,6 +168,10 @@ class Devboard(App, ModalMixin):
     # --------------------------------------------------
     # Additional methods/properties.
     # --------------------------------------------------
+    def _refresh_task_progress(self) -> None:
+        description = next(reversed(self._task_progress.values()), "")
+        self._progress.update(Text(description, no_wrap=True, overflow="ellipsis"))
+
     def scan(self, columns: Iterable[Column] | None = None, *, initial: bool = False) -> None:
         """Recompute columns data in the background.
 
@@ -215,8 +249,8 @@ class Devboard(App, ModalMixin):
                 return rows_by_column
 
             with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-                futures = [pool.submit(scan_project, project) for project in columns_by_project]
-                for future in as_completed(futures):
+                futures = {pool.submit(scan_project, project): project for project in columns_by_project}
+                for done, future in enumerate(as_completed(futures), start=1):
                     if worker.is_cancelled:
                         pool.shutdown(wait=False, cancel_futures=True)
                         return
@@ -224,6 +258,7 @@ class Devboard(App, ModalMixin):
                         results[column].extend(rows)
                         if streaming:
                             call(column._extend, rows)
+                    self.post_message(_TaskProgress(worker, f"Scanned {futures[future]} ({done}/{len(futures)})"))
 
             if streaming:
                 call(self._finalize_columns, columns)
@@ -242,13 +277,19 @@ class Devboard(App, ModalMixin):
 
     def _fetch_projects(self, projects: Iterable[Project]) -> None:
         worker = get_current_worker()
+
+        def fetch_project(project: Project) -> None:
+            if not worker.is_cancelled:
+                project.fetch()
+
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-            futures = [pool.submit(project.fetch) for project in projects]
-            for future in as_completed(futures):
+            futures = {pool.submit(fetch_project, project): project for project in projects}
+            for done, future in enumerate(as_completed(futures), start=1):
                 if worker.is_cancelled:
                     pool.shutdown(wait=False, cancel_futures=True)
                     return
                 future.result()
+                self.post_message(_TaskProgress(worker, f"Fetched {futures[future]} ({done}/{len(futures)})"))
 
     @property
     def _max_workers(self) -> int:
