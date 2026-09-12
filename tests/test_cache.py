@@ -21,7 +21,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING, Any
+from unittest.mock import Mock
 
 import pytest
 
@@ -35,7 +37,7 @@ if TYPE_CHECKING:
 
 class CacheColumn(Column):
     TITLE = "Results"
-    HEADERS = ("Project", "Value")
+    HEADERS: tuple[str, ...] = ("Project", "Value")
 
     def __init__(self, path: Path) -> None:
         """Initialize a column with a project backed by a text file."""
@@ -51,6 +53,10 @@ class CacheColumn(Column):
         """Read the current value without invoking Git."""
         value = project.path.read_text(encoding="utf-8")
         return [(project, value)] if value else []
+
+
+class OtherCacheColumn(CacheColumn):
+    """A different column type with the same headers."""
 
 
 @pytest.fixture(name="cached_board")
@@ -123,5 +129,72 @@ def test_disabled_background_tasks_leave_cache_untouched(cached_board: Path) -> 
 
             assert app.query_one(Column).table.current_row.data[1] == "refreshed"
             assert cache._load("test-board") == {"0": [], "1": []}
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("change", ["unchanged", "reorder", "headers", "title", "type", "rows"])
+def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.MonkeyPatch, change: str) -> None:
+    """Reuse compatible snapshots and invalidate them when columns change."""
+
+    def make_columns() -> list[CacheColumn]:
+        columns = [CacheColumn(cached_board / name) for name in ("first", "second")]
+        columns[0].TITLE = "First"
+        columns[0].HEADERS = ("Project", "Value", "Extra")
+        columns[1].TITLE = "Second"
+        return columns
+
+    async def run_test() -> None:
+        monkeypatch.setattr(Devboard, "_load_columns", lambda self: make_columns())
+        previous_app = Devboard(board="test-board")
+        async with previous_app.run_test():
+            await asyncio.wait_for(previous_app.workers.wait_for_complete(), timeout=5)
+
+        if change == "rows":
+            file = cache._cache_file("test-board")
+            payload = json.loads(file.read_text(encoding="utf-8"))
+            payload["rows"]["0"][0].append("unexpected cell")
+            file.write_text(json.dumps(payload), encoding="utf-8")
+
+        columns = make_columns()
+        if change == "reorder":
+            columns.reverse()
+        elif change == "headers":
+            columns[0].HEADERS = ("Project", "Value")
+        elif change == "title":
+            columns[0].TITLE = "Renamed"
+        elif change == "type":
+            replacement = OtherCacheColumn(cached_board / "first")
+            replacement.TITLE = columns[0].TITLE
+            replacement.HEADERS = columns[0].HEADERS
+            columns[0] = replacement
+        monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)
+        app = Devboard(board="test-board")
+        show_cached = Mock(wraps=app._show_cached_columns)
+        monkeypatch.setattr(app, "_show_cached_columns", show_cached)
+        async with app.run_test():
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert show_cached.call_count == (1 if change == "unchanged" else 0)
+            for column in columns:
+                assert column.table.current_row.data[1] == column.project.path.name
+
+    asyncio.run(run_test())
+
+
+def test_legacy_cache_is_ignored(cached_board: Path) -> None:
+    """Old position-only caches cannot safely identify their columns."""
+    file = cache._cache_file("test-board")
+    file.parent.mkdir(parents=True)
+    file.write_text(
+        json.dumps({"0": [[{"%project": str(cached_board / "first")}, "template", "old", "latest"]], "1": []}),
+        encoding="utf-8",
+    )
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board")
+        async with app.run_test():
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            assert app.query_one(Column).table.current_row.data[1] == "first"
 
     asyncio.run(run_test())

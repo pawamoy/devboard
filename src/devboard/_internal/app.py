@@ -206,7 +206,8 @@ class Devboard(App, ModalMixin):
         call = self.call_from_thread
         use_cache = self._background_tasks
         try:
-            # List projects (fast), deduplicating instances so that anything
+            schema = call(self._cache_schema) if use_cache else None
+            # List projects (fast), deduplicating by repository path so that anything
             # cached on them (Repo objects, git call results) is shared by all columns.
             canonical: dict[Path, Project] = {}
             columns_by_project: dict[Project, list[Column]] = {}
@@ -218,12 +219,12 @@ class Devboard(App, ModalMixin):
             # Display data cached during the previous scan, if any:
             # the board is filled instantly, even on a cold disk cache.
             streaming = True
-            if initial and use_cache and (cached := cache._load(self._board_key)) is not None:
+            if initial and use_cache and (cached := cache._load(self._board_key, schema=schema)) is not None:
                 projects_by_path = {str(project.path): project for project in columns_by_project}
                 cached_rows = {
                     column: cache._decode_rows(cached[str(index)], projects_by_path)
                     for index, column in enumerate(columns)
-                    if str(index) in cached
+                    if str(index) in cached and all(len(row) == len(column.HEADERS) for row in cached[str(index)])
                 }
                 if len(cached_rows) == len(columns):
                     call(self._show_cached_columns, cached_rows)
@@ -266,14 +267,12 @@ class Devboard(App, ModalMixin):
                 call(self._refresh_columns, results)
 
             if use_cache:
-                cache._save(self._board_key, call(self._cache_data))
+                cache._save(self._board_key, call(self._cache_data), schema=schema)
         finally:
             self._scanning = False
 
         if initial and self._background_tasks and not worker.is_cancelled:
             self._fetch_projects(set(columns_by_project))
-            if not worker.is_cancelled:
-                call(self.notify, "Fetched all remotes — press F5 to refresh", title="Devboard")
 
     def _fetch_projects(self, projects: Iterable[Project]) -> None:
         worker = get_current_worker()
@@ -319,6 +318,13 @@ class Devboard(App, ModalMixin):
                 column._extend(rows)
                 column._mark_cached()
             column._finalize()
+
+    def _cache_schema(self) -> list[list[str]]:
+        """Identify the ordered column types, IDs, titles, and headers in a snapshot."""
+        return [
+            [f"{type(column).__module__}.{type(column).__qualname__}", column.id or "", column.TITLE, *column.HEADERS]
+            for column in self.query(Column)
+        ]
 
     def _cache_data(self) -> dict[str, list[tuple[Any, ...]]]:
         """Snapshot all displayed columns, including those not recomputed by a partial scan."""
