@@ -67,7 +67,7 @@ class Devboard(App, ModalMixin):
     """Path to the CSS file."""
 
     BINDINGS: ClassVar = [
-        Binding("F5, ctrl+r", "refresh", "Refresh"),
+        Binding("f5, ctrl+r", "refresh", "Refresh"),
         Binding("question_mark", "show_help", "Help"),
         Binding("ctrl+q, q, escape", "exit", "Exit", key_display="Q"),
     ]
@@ -143,13 +143,14 @@ class Devboard(App, ModalMixin):
 
         A single scan feeds all columns: each project is read once,
         by a small pool of threads, and the resulting rows are dispatched
-        to every column as they arrive.
+        to every column as they arrive. Each completed scan saves the displayed
+        board to the cache when background tasks are enabled.
 
         Parameters:
             columns: The columns to update (all of them by default).
             initial: Whether this is the initial scan at startup, which additionally
-                displays cached data, saves fresh data to the cache, and triggers
-                the background fetch when these features are enabled.
+                displays cached data and triggers the background fetch when
+                these features are enabled.
         """
         if self._scanning:
             return
@@ -168,7 +169,7 @@ class Devboard(App, ModalMixin):
     def _scan(self, columns: list[Column], *, initial: bool) -> None:
         worker = get_current_worker()
         call = self.call_from_thread
-        use_cache = initial and self._background_tasks
+        use_cache = self._background_tasks
         try:
             # List projects (fast), deduplicating instances so that anything
             # cached on them (Repo objects, git call results) is shared by all columns.
@@ -182,7 +183,7 @@ class Devboard(App, ModalMixin):
             # Display data cached during the previous scan, if any:
             # the board is filled instantly, even on a cold disk cache.
             streaming = True
-            if use_cache and (cached := cache._load(self._board_key)) is not None:
+            if initial and use_cache and (cached := cache._load(self._board_key)) is not None:
                 projects_by_path = {str(project.path): project for project in columns_by_project}
                 cached_rows = {
                     column: cache._decode_rows(cached[str(index)], projects_by_path)
@@ -229,7 +230,7 @@ class Devboard(App, ModalMixin):
                 call(self._refresh_columns, results)
 
             if use_cache:
-                cache._save(self._board_key, {str(index): results[column] for index, column in enumerate(columns)})
+                cache._save(self._board_key, call(self._cache_data))
         finally:
             self._scanning = False
 
@@ -276,6 +277,13 @@ class Devboard(App, ModalMixin):
                 column._extend(rows)
                 column._mark_cached()
             column._finalize()
+
+    def _cache_data(self) -> dict[str, list[tuple[Any, ...]]]:
+        """Snapshot all displayed columns, including those not recomputed by a partial scan."""
+        return {
+            str(index): [tuple(row.data) for row in column.table.selectable_rows]
+            for index, column in enumerate(self.query(Column))
+        }
 
     def _load_columns(self) -> Iterable[Column | type[Column]]:
         board: str | Path
