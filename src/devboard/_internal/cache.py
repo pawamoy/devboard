@@ -72,16 +72,25 @@ def _decode_rows(rows: list[list[Any]], projects: dict[str, Project]) -> list[tu
     return decoded
 
 
-def _save(board: str, data: dict[str, list[tuple[Any, ...]]]) -> None:
+def _save(board: str, data: dict[str, list[tuple[Any, ...]]], *, schema: list[list[str]] | None = None) -> None:
     file = _cache_file(board)
     file.parent.mkdir(parents=True, exist_ok=True)
     tmp_file = file.with_suffix(".json.tmp")
-    tmp_file.write_text(json.dumps({title: _encode_rows(rows) for title, rows in data.items()}))
+    tmp_file.write_text(json.dumps({"schema": schema, "rows": {key: _encode_rows(rows) for key, rows in data.items()}}))
     tmp_file.replace(file)
 
 
-def _load(board: str) -> dict[str, list[list[Any]]] | None:
+def _load(board: str, *, schema: list[list[str]] | None = None) -> dict[str, list[list[Any]]] | None:
     try:
-        return json.loads(_cache_file(board).read_text())
+        cached = json.loads(_cache_file(board).read_text())
     except (OSError, ValueError):
         return None
+    if not isinstance(cached, dict) or (schema is not None and cached.get("schema") != schema):
+        return None
+    rows = cached.get("rows")
+    if not isinstance(rows, dict) or not all(
+        isinstance(column_rows, list) and all(isinstance(row, list) for row in column_rows)
+        for column_rows in rows.values()
+    ):
+        return None
+    return rows
