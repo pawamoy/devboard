@@ -45,15 +45,17 @@ class CollapsibleColumn(Column):
 
 class ColumnApp(App[None]):
     def __init__(self) -> None:
-        """Initialize the app with two populated columns."""
+        """Initialize the app with three populated columns."""
         super().__init__()
         self.column = CollapsibleColumn()
         self.other_column = CollapsibleColumn()
+        self.third_column = CollapsibleColumn()
 
     def compose(self) -> ComposeResult:
         """Compose the test app."""
         yield self.column
         yield self.other_column
+        yield self.third_column
 
 
 def test_c_key_collapses_and_expands_focused_column() -> None:
@@ -92,5 +94,63 @@ def test_c_key_collapses_and_expands_focused_column() -> None:
             assert column.table.styles.display == "block"
             assert str(column.query_one(".column-title", Static).content) == "▶ Results"
             assert app.focused is column.table
+
+    asyncio.run(run_test())
+
+
+def test_m_key_maximizes_column_and_restores_previous_layout() -> None:
+    """The M key expands the focused column and restores every column when pressed again."""
+
+    async def run_test() -> None:
+        app = ColumnApp()
+        async with app.run_test() as pilot:
+            # Start with one user-collapsed column between two expanded columns.
+            app.other_column._collapse(focusable=True)
+
+            await pilot.press("m")
+            await pilot.pause()
+
+            # Maximizing keeps the current column open and collapses every other column.
+            assert app.column.is_collapsed is False
+            assert app.other_column.is_collapsed is True
+            assert app.third_column.is_collapsed is True
+            assert app.focused is app.column.table
+
+            await pilot.press("m")
+            await pilot.pause()
+
+            # Unmaximizing restores the exact expanded and collapsed layout.
+            assert app.column.is_collapsed is False
+            assert app.other_column.is_collapsed is True
+            assert app.other_column.can_focus is True
+            assert app.third_column.is_collapsed is False
+            assert app.focused is app.column.table
+
+    asyncio.run(run_test())
+
+
+def test_m_key_restores_maximized_column_to_collapsed_state() -> None:
+    """Unmaximizing re-collapses a column that was collapsed before maximizing."""
+
+    async def run_test() -> None:
+        app = ColumnApp()
+        async with app.run_test() as pilot:
+            await pilot.press("c")
+            await pilot.pause()
+
+            await pilot.press("m")
+            await pilot.pause()
+
+            assert app.column.is_collapsed is False
+            assert app.focused is app.column.table
+
+            await pilot.press("m")
+            await pilot.pause()
+
+            assert app.column.is_collapsed is True
+            assert app.column.can_focus is True
+            assert app.other_column.is_collapsed is False
+            assert app.third_column.is_collapsed is False
+            assert app.focused is app.column
 
     asyncio.run(run_test())

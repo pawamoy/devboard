@@ -82,12 +82,16 @@ class DataTable(SelectableRowsDataTable[_ItemT], Generic[_ItemT]):
 class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     """A Devboard column."""
 
-    BINDINGS: ClassVar = [Binding("c", "toggle_collapse", "Collapse/expand column")]
+    BINDINGS: ClassVar = [
+        Binding("c", "toggle_collapse", "Collapse/expand column"),
+        Binding("m", "toggle_maximize", "Maximize/unmaximize column"),
+    ]
     """Column key bindings."""
     is_collapsed: Reactive[bool] = reactive(default=False, init=False, layout=True, toggle_class="-collapsed")
     """Whether the column is collapsed."""
     is_cached: Reactive[bool] = reactive(default=False, init=False)
     """Whether the column displays cached data."""
+    _layout_before_maximize: list[tuple[Column, bool, bool]] | None = None
     TITLE: str = ""
     """The title of the column."""
     HEADERS: tuple[str, ...] = ()
@@ -142,6 +146,28 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         else:
             self._collapse(focusable=True)
             self.screen.set_focus(self)
+
+    def action_toggle_maximize(self) -> None:
+        """Maximize the column or restore the layout from before it was maximized."""
+        if self._layout_before_maximize is None:
+            columns = list(self.screen.query(Column))
+            self._layout_before_maximize = [(column, column.is_collapsed, column.can_focus) for column in columns]
+            for column in columns:
+                if column is self:
+                    column._expand()
+                else:
+                    column._collapse()
+            self.screen.set_focus(self.table)
+            return
+
+        layout = self._layout_before_maximize
+        self._layout_before_maximize = None
+        for column, was_collapsed, was_focusable in layout:
+            if was_collapsed:
+                column._collapse(focusable=was_focusable)
+            else:
+                column._expand()
+        self.screen.set_focus(self if self.is_collapsed else self.table)
 
     def action_apply(self, action: str = "default") -> None:
         """Apply an action to selected rows."""
