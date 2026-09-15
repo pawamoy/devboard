@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class ChangesColumn(Column):
+class ChangesColumn(Column[Project]):
     """Projects with local changes."""
 
     TITLE = "Local Changes"
@@ -40,14 +40,13 @@ class ChangesColumn(Column):
         yield Project(Path("/workspaces/atlas"))
         yield Project(Path("/workspaces/devboard"))
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Project, str]]:
+    def populate_rows(self, project: Project) -> list[tuple[Project, str]]:
         """Return deterministic local-change data."""
         statuses = {"atlas": "2M 1U", "devboard": "1A"}
         return [(project, statuses[project.name])]
 
 
-class UpdatesColumn(Column):
+class UpdatesColumn(Column[Project]):
     """Branches with remote updates."""
 
     TITLE = "Remote Updates"
@@ -58,8 +57,7 @@ class UpdatesColumn(Column):
         yield Project(Path("/workspaces/atlas"))
         yield Project(Path("/workspaces/toolkit"))
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Project, str, int]]:
+    def populate_rows(self, project: Project) -> list[tuple[Project, str, int]]:
         """Return deterministic remote-update data."""
         branches = {"atlas": ("main", 3), "toolkit": ("docs", 1)}
         branch, count = branches[project.name]

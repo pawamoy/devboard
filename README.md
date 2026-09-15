@@ -5,7 +5,7 @@
 [![pypi version](https://img.shields.io/pypi/v/devboard.svg)](https://pypi.org/project/devboard/)
 [![gitter](https://img.shields.io/badge/matrix-chat-4DB798.svg?style=flat)](https://app.gitter.im/#/room/#devboard:gitter.im)
 
-A development dashboard for your projects.
+A development dashboard for projects, issues, pull requests, and other work.
 
 ## Installation
 

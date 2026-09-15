@@ -18,7 +18,7 @@ class Project(BaseProject):
 
 
 class ToPull(ToPull):
-    def list_projects(self):
+    def list_items(self):
         yield from Project.list_projects()
 
 

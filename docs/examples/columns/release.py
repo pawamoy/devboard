@@ -18,7 +18,7 @@ class Project(BaseProject):
 
 
 class ToRelease(ToRelease):
-    def list_projects(self):
+    def list_items(self):
         yield from Project.list_projects()
 
 

@@ -18,7 +18,7 @@
 
 """Devboard package.
 
-A development dashboard for your projects.
+A development dashboard for projects, issues, pull requests, and other work.
 """
 
 from __future__ import annotations

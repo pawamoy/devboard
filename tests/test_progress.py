@@ -53,7 +53,7 @@ class ProgressProject(Project):
         assert self.release_fetch.wait(5)
 
 
-class ProgressColumn(Column):
+class ProgressColumn(Column[Project]):
     HEADERS = ("Project",)
 
     def __init__(self, projects: list[ProgressProject]) -> None:
@@ -65,8 +65,7 @@ class ProgressColumn(Column):
         """Return the test projects."""
         yield from self.projects
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Project]]:
+    def populate_rows(self, project: Project) -> list[tuple[Project]]:
         """Wait until the test allows this project's scan to complete."""
         progress_project = cast("ProgressProject", project)
         progress_project.scan_started.set()

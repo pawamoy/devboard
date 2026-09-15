@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Hashable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from pathlib import Path
@@ -42,21 +43,22 @@ from devboard._internal.modal import Modal, ModalMixin
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from devboard._internal.projects import Project
+_ItemIdentity = Hashable
+_ItemRows = tuple[Any, list[tuple[Any, ...]]]
 
 _DEBUG = os.getenv("DEBUG", "0") == "1"
 
 _DEFAULT_WORKERS = 4
-"""Default number of concurrent workers scanning projects.
+"""Default number of concurrent workers scanning items.
 
-Kept deliberately low: on cold caches (e.g. right after boot),
-too many concurrent readers make spinning disks seek-thrash,
-which is slower than a few sequential-ish readers.
+Kept deliberately low because too many concurrent project scans on a cold
+cache (e.g. right after boot) make spinning disks seek-thrash. A few readers
+are faster in that situation.
 """
 
 
 class _TaskProgress(Message):
-    """Report a completed repository task."""
+    """Report a completed item task."""
 
     def __init__(self, worker: Worker, description: str) -> None:
         super().__init__()
@@ -94,7 +96,7 @@ class Devboard(App, ModalMixin):
             board: The board to display (name or file path).
             background_tasks: Whether to fetch repositories in the background after the initial scan.
                 Disabling this also disables the on-disk cache (useful for tests and screenshots).
-            workers: How many projects to scan concurrently. Overrides the `workers` config setting.
+            workers: How many items to scan concurrently. Overrides the `workers` config setting.
         """
         super().__init__(*args, **kwargs)
         self._board: str | Path | None = board
@@ -168,7 +170,7 @@ class Devboard(App, ModalMixin):
     def scan(self, columns: Iterable[Column] | None = None, *, initial: bool = False) -> None:
         """Recompute columns data in the background.
 
-        A single scan feeds all columns: each project is read once,
+        A single scan feeds all columns: each item is read once,
         by a small pool of threads, and the resulting rows are dispatched
         to every column as they arrive. Each completed scan saves the displayed
         board to the cache when background tasks are enabled.
@@ -186,12 +188,16 @@ class Devboard(App, ModalMixin):
         self.run_worker(partial(self._scan, column_list, initial=initial), thread=True)
 
     def fetch_all(self) -> None:
-        """Run `git fetch` in all projects, in background."""
-        projects: dict[Path, Project] = {}
-        for column in self.query(Column):
-            for project in column.list_projects():
-                projects.setdefault(project.path.resolve(), project)
-        self.run_worker(partial(self._fetch_projects, tuple(projects.values())), thread=True)
+        """Refresh every item, in background.
+
+        This is the compatibility name for `refresh_all`.
+        """
+        self.refresh_all()
+
+    def refresh_all(self) -> None:
+        """Refresh every item that provides a `refresh` method, in background."""
+        items, _, _, _ = self._collect_items(list(self.query(Column)))
+        self.run_worker(partial(self._refresh_items, tuple(items.values())), thread=True)
 
     def _scan(self, columns: list[Column], *, initial: bool) -> None:
         worker = get_current_worker()
@@ -199,28 +205,21 @@ class Devboard(App, ModalMixin):
         use_cache = self._background_tasks
         try:
             schema = call(self._cache_schema) if use_cache else None
-            # List projects (fast), deduplicating by repository path so that anything
-            # cached on them (Repo objects, git call results) is shared by all columns.
-            canonical: dict[Path, Project] = {}
-            columns_by_project: dict[Project, list[Column]] = {}
-            for column in columns:
-                for project in column.list_projects():
-                    project = canonical.setdefault(project.path.resolve(), project)  # noqa: PLW2901
-                    columns_by_project.setdefault(project, []).append(column)
+            # List items (fast) and share equivalent instances between columns.
+            canonical, columns_by_item, items_by_column, item_order = self._collect_items(columns)
 
             # Display data cached during the previous scan, if any:
             # the board is filled instantly, even on a cold disk cache.
             streaming = True
             if initial and use_cache and (cached := cache._load(self._board_key, schema=schema)) is not None:
-                projects_by_path = {str(project.path): project for project in columns_by_project}
                 cached_rows = {}
                 for index, column in enumerate(columns):
                     key = str(index)
-                    if key not in cached or not all(len(row) == len(column.HEADERS) for row in cached[key]):
+                    if key not in cached or not all(len(row["cells"]) == len(column.HEADERS) for row in cached[key]):
                         continue
-                    decoded_rows = cache._decode_rows(cached[key], projects_by_path)
+                    decoded_rows = cache._decode_rows(cached[key], items_by_column[column])
                     cached_rows[column] = [
-                        tuple(column.deserialize_cell(value) for value in row) for row in decoded_rows
+                        (item, tuple(column.deserialize_cell(value) for value in row)) for item, row in decoded_rows
                     ]
                 if len(cached_rows) == len(columns):
                     call(self._show_cached_columns, cached_rows)
@@ -229,33 +228,48 @@ class Devboard(App, ModalMixin):
             if streaming:
                 call(self._reset_columns, columns)
 
-            # Scan projects: each project is handled entirely by one thread,
+            # Scan items: each item is handled entirely by one thread,
             # computing the rows of every column interested in it.
-            results: dict[Column, list[tuple[Any, ...]]] = {column: [] for column in columns}
+            results: dict[Column, list[_ItemRows]] = {column: [] for column in columns}
+            pending: dict[Column, dict[_ItemIdentity, _ItemRows]] = {column: {} for column in columns}
+            next_item: dict[Column, int] = dict.fromkeys(columns, 0)
 
-            def scan_project(project: Project) -> list[tuple[Column, list[tuple[Any, ...]]]]:
+            def scan_item(identity: _ItemIdentity) -> list[tuple[Column, Any, list[tuple[Any, ...]]]]:
+                item = canonical[identity]
                 rows_by_column = []
-                for column in columns_by_project[project]:
+                for column in columns_by_item[identity]:
                     try:
-                        rows = column.populate_rows(project)
+                        rows = column.populate_rows(item)
                     except Exception as error:  # noqa: BLE001
-                        self.log.error(f"Could not scan {project}: {error}")  # noqa: TRY400
+                        self.log.error(f"Could not scan {item}: {error}")  # noqa: TRY400
                         rows = []
-                    if rows:
-                        rows_by_column.append((column, rows))
+                    rows_by_column.append((column, item, rows))
                 return rows_by_column
 
             with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-                futures = {pool.submit(scan_project, project): project for project in columns_by_project}
+                futures = {pool.submit(scan_item, identity): identity for identity in columns_by_item}
                 for done, future in enumerate(as_completed(futures), start=1):
                     if worker.is_cancelled:
                         pool.shutdown(wait=False, cancel_futures=True)
                         return
-                    for column, rows in future.result():
-                        results[column].extend(rows)
-                        if streaming:
-                            call(column._extend, rows)
-                    self.post_message(_TaskProgress(worker, f"Scanned {futures[future]} ({done}/{len(futures)})"))
+                    identity = futures[future]
+                    completed_columns = []
+                    for column, item, rows in future.result():
+                        pending[column][identity] = (item, rows)
+                        completed_columns.append(column)
+                    for column in completed_columns:
+                        order = item_order[column]
+                        index = next_item[column]
+                        while index < len(order) and order[index] in pending[column]:
+                            item, rows = pending[column].pop(order[index])
+                            if rows:
+                                results[column].append((item, rows))
+                                if streaming:
+                                    call(column._extend_item, item, rows)
+                            index += 1
+                        next_item[column] = index
+                    item = canonical[identity]
+                    self.post_message(_TaskProgress(worker, f"Scanned {item} ({done}/{len(futures)})"))
 
             if streaming:
                 call(self._finalize_columns, columns)
@@ -265,7 +279,7 @@ class Devboard(App, ModalMixin):
             if use_cache:
                 cache._save(self._board_key, call(self._cache_data), schema=schema)
             if initial and self._background_tasks and not worker.is_cancelled:
-                self._fetch_projects(set(columns_by_project))
+                self._refresh_items(canonical.values())
         finally:
             call(self._finish_scan)
 
@@ -273,27 +287,28 @@ class Devboard(App, ModalMixin):
         """Mark the current scan as finished on the UI thread."""
         self._scanning = False
 
-    def _fetch_projects(self, projects: Iterable[Project]) -> None:
+    def _refresh_items(self, items: Iterable[Any]) -> None:
         worker = get_current_worker()
+        refreshable = tuple(item for item in items if callable(getattr(item, "refresh", None)))
 
-        def fetch_project(project: Project) -> bool:
-            if worker.is_cancelled or not project.lock():
+        def refresh_item(item: Any) -> bool:
+            if worker.is_cancelled:
                 return False
-            try:
-                project.fetch()
-            finally:
-                project.unlock()
-            return True
+            return item.refresh() is not False
 
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-            futures = {pool.submit(fetch_project, project): project for project in projects}
+            futures = {pool.submit(refresh_item, item): item for item in refreshable}
             for done, future in enumerate(as_completed(futures), start=1):
                 if worker.is_cancelled:
                     pool.shutdown(wait=False, cancel_futures=True)
                     return
-                fetched = future.result()
-                verb = "Fetched" if fetched else "Skipped"
+                refreshed = future.result()
+                verb = getattr(futures[future], "REFRESH_VERB", "Refreshed") if refreshed else "Skipped"
                 self.post_message(_TaskProgress(worker, f"{verb} {futures[future]} ({done}/{len(futures)})"))
+
+    def _fetch_projects(self, projects: Iterable[Any]) -> None:
+        """Refresh projects through the former private API."""
+        self._refresh_items(projects)
 
     @property
     def _max_workers(self) -> int:
@@ -309,18 +324,19 @@ class Devboard(App, ModalMixin):
         for column in columns:
             column._finalize()
 
-    def _refresh_columns(self, results: dict[Column, list[tuple[Any, ...]]]) -> None:
-        for column, rows in results.items():
+    def _refresh_columns(self, results: dict[Column, list[_ItemRows]]) -> None:
+        for column, item_rows in results.items():
             column._reset()
-            if rows:
-                column._extend(rows)
+            for item, rows in item_rows:
+                column._extend_item(item, rows)
             column._finalize()
 
-    def _show_cached_columns(self, cached_rows: dict[Column, list[tuple[Any, ...]]]) -> None:
-        for column, rows in cached_rows.items():
+    def _show_cached_columns(self, cached_rows: dict[Column, list[tuple[Any, tuple[Any, ...]]]]) -> None:
+        for column, item_rows in cached_rows.items():
             column._reset()
-            if rows:
-                column._extend(rows)
+            for item, row in item_rows:
+                column._extend_item(item, [row])
+            if item_rows:
                 column._mark_cached()
             column._finalize()
 
@@ -337,14 +353,44 @@ class Devboard(App, ModalMixin):
             for column in self.query(Column)
         ]
 
-    def _cache_data(self) -> dict[str, list[tuple[Any, ...]]]:
+    def _cache_data(self) -> dict[str, list[cache._CachedRow]]:
         """Snapshot all displayed columns, including those not recomputed by a partial scan."""
         return {
             str(index): [
-                tuple(column.serialize_cell(value) for value in row.data) for row in column.table.selectable_rows
+                cache._CachedRow(
+                    item_key=column.item_key(row.item),
+                    item=row.item,
+                    cells=tuple(value if value is row.item else column.serialize_cell(value) for value in row.data),
+                )
+                for row in column.table.selectable_rows
             ]
             for index, column in enumerate(self.query(Column))
         }
+
+    @staticmethod
+    def _collect_items(
+        columns: list[Column],
+    ) -> tuple[
+        dict[_ItemIdentity, Any],
+        dict[_ItemIdentity, list[Column]],
+        dict[Column, dict[str, Any]],
+        dict[Column, list[_ItemIdentity]],
+    ]:
+        """List items and build their scan and cache lookups."""
+        canonical: dict[_ItemIdentity, Any] = {}
+        columns_by_item: dict[_ItemIdentity, list[Column]] = {}
+        items_by_column: dict[Column, dict[str, Any]] = {column: {} for column in columns}
+        item_order: dict[Column, list[_ItemIdentity]] = {column: [] for column in columns}
+        for column in columns:
+            for candidate in column.list_items():
+                identity = column.item_key(candidate)
+                item = canonical.setdefault(identity, candidate)
+                interested_columns = columns_by_item.setdefault(identity, [])
+                if column not in interested_columns:
+                    interested_columns.append(column)
+                    item_order[column].append(identity)
+                items_by_column[column][cache._item_token(column.item_key(item))] = item
+        return canonical, columns_by_item, items_by_column, item_order
 
     def _load_columns(self) -> Iterable[Column | type[Column]]:
         """Load columns and board settings before composing the widget tree."""

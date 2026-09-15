@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 BASE_DIR = Path(os.getenv("DEVBOARD_PROJECTS", Path.home() / "dev")).expanduser()
 """The base directory containing all your Git projects.
 
-This variable is only used to list projects in `Project.list_projects`
+This variable is only used to list projects in `MyProject.list_projects`
 and has no special meaning for Devboard.
 """
 
@@ -56,7 +56,7 @@ class MyProject(Project):
                 yield cls(filedir)
 
 
-class ToCommit(Column):
+class ToCommit(Column[MyProject]):
     """A column showing projects with uncommitted changes."""
 
     TITLE = "To Commit"
@@ -71,8 +71,7 @@ class ToCommit(Column):
         """List projects for this column."""
         yield from MyProject.list_projects()
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
+    def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns a single row with the project and its status line.
@@ -80,7 +79,7 @@ class ToCommit(Column):
         status_line = project.status_line
         return [(project, status_line)] if status_line else []
 
-    def apply(self, action: str, row: Row) -> None:
+    def apply(self, action: str, row: Row[MyProject]) -> None:
         """Process actions.
 
         It handles two actions: `status` and `diff`.
@@ -89,14 +88,14 @@ class ToCommit(Column):
         - `diff`: Show the Git diff of the selected project in a modal window.
         """
         if action == "status":
-            self.modal(text=row.project.repo.git(c="color.status=always").status())
+            self.modal(text=row.item.repo.git(c="color.status=always").status())
         elif action == "diff":
-            self.modal(text=row.project.repo.git(c="color.ui=always").diff())
+            self.modal(text=row.item.repo.git(c="color.ui=always").diff())
         else:
             raise ValueError(f"Unknown action '{action}'")
 
 
-class ToPull(Column):
+class ToPull(Column[MyProject]):
     """A column showing branches with commits that should be pulled."""
 
     TITLE = "To Pull"
@@ -110,15 +109,14 @@ class ToPull(Column):
         """List projects for this column."""
         yield from MyProject.list_projects()
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
+    def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns multiple rows, one for each branch having commits to pull from the remote.
         """
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 
-    def apply(self, action: str, row: Row) -> None:
+    def apply(self, action: str, row: Row[MyProject]) -> None:
         """Process actions.
 
         It can pull or delete the branch in the selected row.
@@ -152,7 +150,7 @@ class ToPull(Column):
                 row.remove()
 
 
-class ToPush(Column):
+class ToPush(Column[MyProject]):
     """A column showing branches with commits that should be pushed."""
 
     TITLE = "To Push"
@@ -165,15 +163,14 @@ class ToPush(Column):
         """List projects for this column."""
         yield from MyProject.list_projects()
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
+    def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns multiple rows, one for each branch having commits to push to the remote.
         """
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
-    def apply(self, action: str, row: Row) -> None:
+    def apply(self, action: str, row: Row[MyProject]) -> None:
         """Process actions.
 
         It handles a single default action: running `git push` for the selected row
@@ -197,7 +194,7 @@ class ToPush(Column):
                 row.remove()
 
 
-class ToRelease(Column):
+class ToRelease(Column[MyProject]):
     """A column showing projects with commits that should be released."""
 
     TITLE = "To Release"
@@ -207,8 +204,7 @@ class ToRelease(Column):
         """List projects for this column."""
         yield from MyProject.list_projects()
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
+    def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
 
         It returns a single row with the project and a summary of commit types.
