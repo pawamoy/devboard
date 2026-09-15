@@ -104,20 +104,20 @@ print(screenshot("columns/commit", size=(60, 16)))
 First, we create the column and add it to the board:
 
 ```python
-from devboard import Column, Project
+from devboard import Board, Column, Project
 
 
 class ToCommit(Column[Project]):
     TITLE = "To Commit"
 
 
-columns = [
+board = Board([
     ToCommit,
-]
+])
 ```
 
 Here we create a column by declaring a class that inherits from [`devboard.Column`][].
-Then we add it to the `columns` list, because Devboard uses this variable to build the board.
+Then we add it to a [`devboard.Board`][] instance. Each board module must export this instance as `board`.
 
 ### Listing projects for a column
 
@@ -127,7 +127,7 @@ by implementing a `list_items` method on the class:
 
 ```python hl_lines="1 2 8-12"
 from pathlib import Path
-from devboard import Column, Project
+from devboard import Board, Column, Project
 
 
 class ToCommit(Column[Project]):
@@ -139,9 +139,9 @@ class ToCommit(Column[Project]):
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
                 yield Project(filedir)
 
-columns = [
+board = Board([
     ToCommit,
-]
+])
 ```
 
 Here we set our base directory, where our projects are, to the `dev` folder
@@ -163,7 +163,7 @@ by implementing the `populate_rows` method.
 
 ```python hl_lines="7 15-18"
 from pathlib import Path
-from devboard import Column, Project
+from devboard import Board, Column, Project
 
 
 class ToCommit(Column[Project]):
@@ -181,9 +181,9 @@ class ToCommit(Column[Project]):
         return [(project, status_line)] if status_line else []
 
 
-columns = [
+board = Board([
     ToCommit,
-]
+])
 ```
 
 We declare the table headers with the `HEADERS` class variable.
@@ -212,7 +212,7 @@ and by implementing the `apply` method:
 
 ```python hl_lines="2 8-12 26-32"
 from pathlib import Path
-from devboard import Column, Project, Row
+from devboard import Board, Column, Project, Row
 
 
 class ToCommit(Column[Project]):
@@ -243,9 +243,9 @@ class ToCommit(Column[Project]):
             raise ValueError(f"Unknown action '{action}'")
 
 
-columns = [
+board = Board([
     ToCommit,
-]
+])
 ```
 
 Bindings are a list of a 3-tuples.
@@ -327,7 +327,7 @@ in a reusable function:
 ```python hl_lines="1 3-6 13"
 BASE_DIR = Path.home() / "dev"
 
-def list_projects():
+def iter_projects():
     for filedir in BASE_DIR.iterdir():
         if filedir.is_dir() and filedir.joinpath(".git").is_dir():
             yield Project(filedir)
@@ -337,7 +337,7 @@ class ToPull(Column[Project]):
     TITLE = "To Pull"
 
     def list_items(self):
-        yield from list_projects()
+        yield from iter_projects()
 ```
 
 If needed, update the `list_items` method of the `ToCommit` column too.
@@ -350,7 +350,7 @@ class ToPull(Column[Project]):
     HEADERS = ("Project", "Branch", "Commits")
 
     def list_items(self):
-        yield from list_projects()
+        yield from iter_projects()
 
     def populate_rows(self, project: Project):
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
@@ -376,7 +376,7 @@ class ToPull(Column[Project]):
     ]
 
     def list_items(self):
-        yield from list_projects()
+        yield from iter_projects()
 
     def populate_rows(self, project):
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
@@ -456,10 +456,10 @@ and we remove the row from the board.
 Lets add our new column to the board:
 
 ```python hl_lines="3"
-columns = [
+board = Board([
     ToCommit,
     ToPull,
-]
+])
 ```
 
 ```python exec="1" html="1" session="screenshots-tutorial"
@@ -492,7 +492,7 @@ class ToPush(Column[Project]):
     ]
 
     def list_items(self):
-        yield from list_projects()
+        yield from iter_projects()
 
     def populate_rows(self, project):
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
@@ -519,11 +519,11 @@ class ToPush(Column[Project]):
 Lets add our new column to the board:
 
 ```python hl_lines="4"
-columns = [
+board = Board([
     ToCommit,
     ToPull,
     ToPush,
-]
+])
 ```
 
 ```python exec="1" html="1" session="screenshots-tutorial"
@@ -567,7 +567,7 @@ class ToRelease(Column[Project]):
     HEADERS = ("Project", "Details")
 
     def list_items(self):
-        yield from list_projects()
+        yield from iter_projects()
 
     def populate_rows(self, project):
         commit_types = {"feat": "F", "fix": "X", "refactor": "R", "build": "B", "deps": "D"}
@@ -589,16 +589,29 @@ of their message to infer the commit type.
 We count each type, and if any type count is higher than 0,
 we build a summary line and return a row.
 
-Lets add our new column to the board:
+Lets add our new column to the board. This board also defines how projects refresh:
 
 ```python hl_lines="5"
-columns = [
-    ToCommit,
-    ToPull,
-    ToPush,
-    ToRelease,
-]
+class ProjectBoard(Board):
+    def force_refresh_item(self, item):
+        item.fetch_locked()
+
+
+board = ProjectBoard(
+    [ToCommit, ToPull, ToPush, ToRelease],
+    bindings=[
+        ("ctrl+r", "refresh", "Refresh"),
+        ("ctrl+shift+r", "force_refresh", "Force refresh"),
+    ],
+    force_refresh_on_startup=True,
+)
 ```
+
+A normal refresh lists and scans the projects again. It does not contact their remotes. A force-refresh calls `force_refresh_item()` before it scans each project. [`Project.fetch_locked()`][devboard.Project.fetch_locked] fetches Git data unless another operation holds the project lock.
+
+Devboard fetches and scans each project in one worker task. It does not wait for all fetches to finish before it starts scanning projects. The `force_refresh_on_startup` option applies this behavior during startup.
+
+The board owns its application bindings. Press ++ctrl+r++ for a normal refresh. Press ++ctrl+shift+r++ to fetch and then scan each project.
 
 Here is our final board with four columns:
 
@@ -618,7 +631,7 @@ The following example uses a small local issue model:
 import webbrowser
 from dataclasses import dataclass
 
-from devboard import Column, Row
+from devboard import Board, Column, Row
 
 
 @dataclass
@@ -656,27 +669,19 @@ class ToTriage(Column[Issue]):
         if action != "open":
             raise ValueError(f"Unknown action '{action}'")
         webbrowser.open(row.item.url)
+
+
+board = Board(
+    [ToTriage],
+    bindings=[("ctrl+r", "refresh", "Refresh")],
+)
 ```
 
-`row.item` is the source `Issue`, even though the table only displays strings.
-The `item_key` method lets Devboard recognize the same issue when an API client
-creates new instances. It also lets the cache reconnect stored rows to the
-current issue objects. The key must be hashable, stable between scans, and
-unique across the board. Include a provider name when different providers can
-return the same repository and number.
+`row.item` is the source `Issue`, even though the table only displays strings. The `item_key` method lets Devboard recognize the same issue when an API client creates new instances. It also lets the cache reconnect stored rows to the current issue objects. The key must be hashable, stable between scans, and unique across the board. Include a provider name when different providers can return the same repository and number.
 
-Pull requests can use the same `Issue` type and a separate `Column[Issue]`.
-For example, its `populate_rows` method can return an empty list when
-`issue.is_pull_request` is false.
+Pull requests can use the same `Issue` type and a separate `Column[Issue]`. For example, its `populate_rows` method can return an empty list when `issue.is_pull_request` is false.
 
-With background tasks enabled, Devboard calls `refresh()` on items that provide
-it after the first scan. `Project.refresh()` fetches its Git remotes. API-backed
-columns can instead load current issues in `list_items`; they do not need to add
-a refresh method.
-
-Older project boards can continue to implement `list_projects` and use
-`row.project`. These names remain as compatibility aliases. New boards should
-use `list_items` and `row.item`.
+This backlog board does not need an item refresh hook. Its `list_items()` method can request the current issues from the provider. Pressing ++ctrl+r++ runs `list_items()` again before Devboard scans the returned issues.
 
 Now you can continue tinkering with your board,
 or delete your configuration file and re-run `devboard`

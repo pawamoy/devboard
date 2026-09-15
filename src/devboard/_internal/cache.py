@@ -139,9 +139,7 @@ def _load(board: str, *, schema: list[list[str]] | None = None) -> dict[str, lis
     if not isinstance(rows, dict) or not all(
         isinstance(column_rows, list)
         and all(
-            isinstance(row, dict)
-            and set(row) == {"item", "cells"}
-            and isinstance(row["cells"], list)
+            isinstance(row, dict) and set(row) == {"item", "cells"} and isinstance(row["cells"], list)
             for row in column_rows
         )
         for column_rows in rows.values()

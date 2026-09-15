@@ -64,8 +64,6 @@ class Project:
     _LOCKS_GUARD: ClassVar[Lock] = Lock()
     DEFAULT_BRANCHES: ClassVar[tuple[str, ...]] = ("main", "master")
     """Name of common default branches. Mainly useful to compute unreleased commits."""
-    REFRESH_VERB: ClassVar[str] = "Fetched"
-    """Past-tense verb shown after refreshing a project."""
 
     def __init__(self, path: Path) -> None:
         self.path: Path = path
@@ -256,8 +254,8 @@ class Project:
         with suppress(AttributeError, GitCommandError):
             self.repo.remotes.upstream.fetch()
 
-    def refresh(self) -> bool:
-        """Fetch the project while preventing concurrent path operations."""
+    def fetch_locked(self) -> bool:
+        """Fetch the project if no other path operation is running."""
         if not self.lock():
             return False
         try:

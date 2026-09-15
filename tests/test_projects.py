@@ -63,3 +63,21 @@ def test_locked_context_releases_after_error(tmp_path: Path) -> None:
 
     assert project.lock()
     project.unlock()
+
+
+def test_fetch_locked_skips_a_busy_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fetch only when the project path lock is available."""
+    project = Project(tmp_path)
+    fetched: list[Path] = []
+    monkeypatch.setattr(Project, "fetch", lambda self: fetched.append(self.path))
+
+    assert project.fetch_locked()
+    assert fetched == [tmp_path]
+
+    assert project.lock()
+    try:
+        assert not project.fetch_locked()
+    finally:
+        project.unlock()
+
+    assert fetched == [tmp_path]

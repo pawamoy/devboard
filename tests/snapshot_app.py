@@ -23,7 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from devboard import Column, Devboard, Project
+from devboard import Board, Column, Devboard, Project
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -35,7 +35,7 @@ class ChangesColumn(Column[Project]):
     TITLE = "Local Changes"
     HEADERS = ("Project", "Status")
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_items(self) -> Iterator[Project]:
         """Return projects shown in this test column."""
         yield Project(Path("/workspaces/atlas"))
         yield Project(Path("/workspaces/devboard"))
@@ -52,7 +52,7 @@ class UpdatesColumn(Column[Project]):
     TITLE = "Remote Updates"
     HEADERS = ("Project", "Branch", "Behind")
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_items(self) -> Iterator[Project]:
         """Return projects shown in this test column."""
         yield Project(Path("/workspaces/atlas"))
         yield Project(Path("/workspaces/toolkit"))
@@ -71,6 +71,13 @@ class SnapshotDevboard(Devboard):
         """Initialize a deterministic board."""
         super().__init__(board="snapshot", background_tasks=False, workers=1)
 
-    def _load_columns(self) -> list[Column]:
+    def _load_board(self) -> Board:
+        """Return the deterministic board used by snapshots."""
         self._board_key = "snapshot"
-        return [ChangesColumn(), UpdatesColumn()]
+        return Board(
+            [ChangesColumn(), UpdatesColumn()],
+            bindings=[
+                ("ctrl+r", "refresh", "Refresh"),
+                ("ctrl+shift+r", "force_refresh", "Force refresh"),
+            ],
+        )

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from devboard import Column
+from devboard import Board, Column
 from devboard._internal.loader import _load_board
 
 if TYPE_CHECKING:
@@ -32,14 +32,14 @@ if TYPE_CHECKING:
 
 
 BOARD_SOURCE = """
-from devboard import Column
+from devboard import Board, Column
 
 
 class Work(Column):
     TITLE = "Work"
 
 
-columns = [Work]
+board = Board([Work])
 """
 
 
@@ -51,7 +51,7 @@ def test_create_default_configuration_and_board(tmp_path: Path) -> None:
 
     assert config_file.read_text(encoding="utf-8") == 'board = "default"\n'
     assert definition.path == (config_file.parent / "default.py").resolve()
-    assert definition.columns
+    assert definition.board.columns
 
 
 def test_load_named_board_and_settings(tmp_path: Path) -> None:
@@ -66,8 +66,9 @@ def test_load_named_board_and_settings(tmp_path: Path) -> None:
 
     assert definition.path == board_file.resolve()
     assert definition.workers == 3
-    assert len(definition.columns) == 1
-    column = definition.columns[0]
+    assert isinstance(definition.board, Board)
+    assert len(definition.board.columns) == 1
+    column = definition.board.columns[0]
     assert isinstance(column, type)
     assert issubclass(column, Column)
 
@@ -103,17 +104,23 @@ def test_invalid_worker_count_is_rejected(
 
 
 @pytest.mark.parametrize(
-    ("source", "message"),
+    ("source", "error_type", "message"),
     [
-        ("value = 1\n", "iterable named 'columns'"),
-        ("columns = [object()]\n", "Invalid column"),
+        ("columns = []\n", ValueError, "Board instance named 'board'"),
+        ("board = object()\n", TypeError, "Invalid board"),
+        ("from devboard import Board\nboard = Board([object()])\n", TypeError, "Invalid column"),
     ],
 )
-def test_invalid_board_definition_is_rejected(tmp_path: Path, source: str, message: str) -> None:
-    """A board must provide an iterable of column classes or instances."""
+def test_invalid_board_definition_is_rejected(
+    tmp_path: Path,
+    source: str,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    """A board module must export a valid Board instance."""
     config_file = tmp_path / "config.toml"
     config_file.write_text('board = "work"\n', encoding="utf-8")
     (tmp_path / "work.py").write_text(source, encoding="utf-8")
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(error_type, match=message):
         _load_board(None, config_file=config_file)

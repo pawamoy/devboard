@@ -27,11 +27,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from devboard import Column, Devboard, Project
+from devboard import Board, Column, Devboard, Project
 from devboard._internal import cache
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
     from pathlib import Path
 
 
@@ -44,7 +44,7 @@ class CacheColumn(Column[Project]):
         super().__init__()
         self.project = Project(path)
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_items(self) -> Iterator[Project]:
         """Return the column's project."""
         yield self.project
 
@@ -81,6 +81,11 @@ class WrappedCacheColumn(CacheColumn):
         return value
 
 
+def _cache_board(columns: Sequence[CacheColumn]) -> Board:
+    """Create a cache test board with a normal refresh binding."""
+    return Board(columns, bindings=[("f5, ctrl+r", "refresh", "Refresh")])
+
+
 @pytest.fixture(name="cached_board")
 def _fixture_cached_board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in ("first", "second"):
@@ -88,10 +93,9 @@ def _fixture_cached_board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pa
     monkeypatch.setattr(cache, "_CACHE_DIR", tmp_path / "cache")
     monkeypatch.setattr(
         Devboard,
-        "_load_columns",
-        lambda self: [CacheColumn(tmp_path / name) for name in ("first", "second")],
+        "_load_board",
+        lambda self: _cache_board([CacheColumn(tmp_path / name) for name in ("first", "second")]),
     )
-    monkeypatch.setattr(Devboard, "_refresh_items", lambda self, items: None)
     return tmp_path
 
 
@@ -190,7 +194,7 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
         return columns
 
     async def run_test() -> None:
-        monkeypatch.setattr(Devboard, "_load_columns", lambda self: make_columns())
+        monkeypatch.setattr(Devboard, "_load_board", lambda self: _cache_board(make_columns()))
         previous_app = Devboard(board="test-board")
         async with previous_app.run_test():
             await asyncio.wait_for(previous_app.workers.wait_for_complete(), timeout=5)
@@ -215,7 +219,7 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
             columns[0] = replacement
         elif change == "version":
             columns[0].CACHE_VERSION += 1
-        monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)
+        monkeypatch.setattr(Devboard, "_load_board", lambda self: _cache_board(columns))
         app = Devboard(board="test-board")
         show_cached = Mock(wraps=app._show_cached_columns)
         monkeypatch.setattr(app, "_show_cached_columns", show_cached)
@@ -264,7 +268,7 @@ def test_column_cache_serialization_hooks(cached_board: Path, monkeypatch: pytes
         return [WrappedCacheColumn(cached_board / name) for name in ("first", "second")]
 
     async def run_test() -> None:
-        monkeypatch.setattr(Devboard, "_load_columns", lambda self: make_columns())
+        monkeypatch.setattr(Devboard, "_load_board", lambda self: _cache_board(make_columns()))
         previous_app = Devboard(board="test-board")
         async with previous_app.run_test():
             await asyncio.wait_for(previous_app.workers.wait_for_complete(), timeout=5)
@@ -274,7 +278,7 @@ def test_column_cache_serialization_hooks(cached_board: Path, monkeypatch: pytes
         assert cached["0"][0]["cells"][1] == {"text": "first"}
 
         columns = make_columns()
-        monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)
+        monkeypatch.setattr(Devboard, "_load_board", lambda self: _cache_board(columns))
         app = Devboard(board="test-board")
         async with app.run_test():
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)

@@ -36,8 +36,8 @@ from textual.widgets import Footer, Static
 from textual.worker import Worker, get_current_worker
 
 from devboard._internal import cache
-from devboard._internal.board import Column, DataTable
-from devboard._internal.loader import _load_board
+from devboard._internal.board import Board, Column, DataTable
+from devboard._internal.loader import _load_board as _load_board_definition
 from devboard._internal.modal import Modal, ModalMixin
 
 if TYPE_CHECKING:
@@ -73,7 +73,6 @@ class Devboard(App, ModalMixin):
     """Path to the CSS file."""
 
     BINDINGS: ClassVar = [
-        Binding("f5, ctrl+r", "refresh", "Refresh"),
         Binding("question_mark", "show_help", "Help"),
         Binding("ctrl+q, q, escape", "exit", "Exit", key_display="Q"),
     ]
@@ -94,19 +93,22 @@ class Devboard(App, ModalMixin):
 
         Parameters:
             board: The board to display (name or file path).
-            background_tasks: Whether to fetch repositories in the background after the initial scan.
-                Disabling this also disables the on-disk cache (useful for tests and screenshots).
+            background_tasks: Whether to run forced startup hooks and use the on-disk cache.
+                Disable this option for deterministic tests and screenshots.
             workers: How many items to scan concurrently. Overrides the `workers` config setting.
         """
         super().__init__(*args, **kwargs)
-        self._board: str | Path | None = board
+        self._board_source: str | Path | None = board
         self._board_key: str = str(board)
         self._background_tasks: bool = background_tasks
         self._scan_workers: int | None = workers
         self._scanning: bool = False
         self._task_progress: dict[Worker, str] = {}
         self._progress = Static("", id="task-progress", markup=False)
-        self._columns = tuple(self._load_columns())
+        self.board: Board = self._load_board()
+        """The loaded board definition."""
+        self._columns = self.board.columns
+        self._bind_board_actions()
 
     def compose(self) -> ComposeResult:
         """Compose the layout."""
@@ -120,8 +122,9 @@ class Devboard(App, ModalMixin):
             yield Footer()
 
     def on_mount(self) -> None:
-        """Populate columns, then run background tasks."""
-        self.scan(initial=True)
+        """Populate columns when the application starts."""
+        force = self._background_tasks and self.board.force_refresh_on_startup
+        self.scan(initial=True, force=force)
 
     @on(_TaskProgress)
     def _on_task_progress(self, event: _TaskProgress) -> None:
@@ -144,6 +147,7 @@ class Devboard(App, ModalMixin):
         """Show help."""
         lines = ["# Main keys\n\n"]
         lines.extend(self._bindings_help(Devboard))
+        lines.extend(self._binding_specs_help(self.board.bindings))
         lines.extend(self._bindings_help(DataTable, search_up=True))
         lines.extend(self._bindings_help(Column))
         for column in self.query(Column):
@@ -153,7 +157,11 @@ class Devboard(App, ModalMixin):
 
     def action_refresh(self) -> None:
         """Refresh all columns."""
-        self.scan()
+        self.refresh_board()
+
+    def action_force_refresh(self) -> None:
+        """Force-refresh all columns."""
+        self.force_refresh_board()
 
     def action_exit(self) -> None:
         """Exit application."""
@@ -167,7 +175,21 @@ class Devboard(App, ModalMixin):
         description = next(reversed(self._task_progress.values()), "")
         self._progress.update(Text(description, no_wrap=True, overflow="ellipsis"))
 
-    def scan(self, columns: Iterable[Column] | None = None, *, initial: bool = False) -> None:
+    def refresh_board(self, columns: Iterable[Column] | None = None) -> None:
+        """Refresh columns without forcing their items to update external state."""
+        self.scan(columns)
+
+    def force_refresh_board(self, columns: Iterable[Column] | None = None) -> None:
+        """Refresh columns after forcing their items to update external state."""
+        self.scan(columns, force=True)
+
+    def scan(
+        self,
+        columns: Iterable[Column] | None = None,
+        *,
+        initial: bool = False,
+        force: bool = False,
+    ) -> None:
         """Recompute columns data in the background.
 
         A single scan feeds all columns: each item is read once,
@@ -177,29 +199,16 @@ class Devboard(App, ModalMixin):
 
         Parameters:
             columns: The columns to update (all of them by default).
-            initial: Whether this is the initial scan at startup, which additionally
-                displays cached data and triggers the background fetch when
-                these features are enabled.
+            initial: Whether this is the initial scan, which can display cached data.
+            force: Whether to use the board's forced item hook.
         """
         if self._scanning:
             return
         self._scanning = True
         column_list = list(columns) if columns is not None else list(self.query(Column))
-        self.run_worker(partial(self._scan, column_list, initial=initial), thread=True)
+        self.run_worker(partial(self._scan, column_list, initial=initial, force=force), thread=True)
 
-    def fetch_all(self) -> None:
-        """Refresh every item, in background.
-
-        This is the compatibility name for `refresh_all`.
-        """
-        self.refresh_all()
-
-    def refresh_all(self) -> None:
-        """Refresh every item that provides a `refresh` method, in background."""
-        items, _, _, _ = self._collect_items(list(self.query(Column)))
-        self.run_worker(partial(self._refresh_items, tuple(items.values())), thread=True)
-
-    def _scan(self, columns: list[Column], *, initial: bool) -> None:
+    def _scan(self, columns: list[Column], *, initial: bool, force: bool) -> None:
         worker = get_current_worker()
         call = self.call_from_thread
         use_cache = self._background_tasks
@@ -228,14 +237,21 @@ class Devboard(App, ModalMixin):
             if streaming:
                 call(self._reset_columns, columns)
 
-            # Scan items: each item is handled entirely by one thread,
-            # computing the rows of every column interested in it.
+            # Prepare and scan each item in one thread so there is no barrier
+            # between updating the item and computing its rows.
             results: dict[Column, list[_ItemRows]] = {column: [] for column in columns}
             pending: dict[Column, dict[_ItemIdentity, _ItemRows]] = {column: {} for column in columns}
             next_item: dict[Column, int] = dict.fromkeys(columns, 0)
+            prepare_item = self.board.force_refresh_item if force else self.board.refresh_item
 
             def scan_item(identity: _ItemIdentity) -> list[tuple[Column, Any, list[tuple[Any, ...]]]]:
                 item = canonical[identity]
+                if worker.is_cancelled:
+                    return []
+                try:
+                    prepare_item(item)
+                except Exception as error:  # noqa: BLE001
+                    self.log.error(f"Could not prepare {item} for scanning: {error}")  # noqa: TRY400
                 rows_by_column = []
                 for column in columns_by_item[identity]:
                     try:
@@ -269,7 +285,8 @@ class Devboard(App, ModalMixin):
                             index += 1
                         next_item[column] = index
                     item = canonical[identity]
-                    self.post_message(_TaskProgress(worker, f"Scanned {item} ({done}/{len(futures)})"))
+                    verb = "Force-refreshed" if force else "Refreshed"
+                    self.post_message(_TaskProgress(worker, f"{verb} {item} ({done}/{len(futures)})"))
 
             if streaming:
                 call(self._finalize_columns, columns)
@@ -278,37 +295,12 @@ class Devboard(App, ModalMixin):
 
             if use_cache:
                 cache._save(self._board_key, call(self._cache_data), schema=schema)
-            if initial and self._background_tasks and not worker.is_cancelled:
-                self._refresh_items(canonical.values())
         finally:
             call(self._finish_scan)
 
     def _finish_scan(self) -> None:
         """Mark the current scan as finished on the UI thread."""
         self._scanning = False
-
-    def _refresh_items(self, items: Iterable[Any]) -> None:
-        worker = get_current_worker()
-        refreshable = tuple(item for item in items if callable(getattr(item, "refresh", None)))
-
-        def refresh_item(item: Any) -> bool:
-            if worker.is_cancelled:
-                return False
-            return item.refresh() is not False
-
-        with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-            futures = {pool.submit(refresh_item, item): item for item in refreshable}
-            for done, future in enumerate(as_completed(futures), start=1):
-                if worker.is_cancelled:
-                    pool.shutdown(wait=False, cancel_futures=True)
-                    return
-                refreshed = future.result()
-                verb = getattr(futures[future], "REFRESH_VERB", "Refreshed") if refreshed else "Skipped"
-                self.post_message(_TaskProgress(worker, f"{verb} {futures[future]} ({done}/{len(futures)})"))
-
-    def _fetch_projects(self, projects: Iterable[Any]) -> None:
-        """Refresh projects through the former private API."""
-        self._refresh_items(projects)
 
     @property
     def _max_workers(self) -> int:
@@ -392,17 +384,38 @@ class Devboard(App, ModalMixin):
                 items_by_column[column][cache._item_token(column.item_key(item))] = item
         return canonical, columns_by_item, items_by_column, item_order
 
-    def _load_columns(self) -> Iterable[Column | type[Column]]:
-        """Load columns and board settings before composing the widget tree."""
-        board = _load_board(self._board)
-        self._board_key = str(board.path)
+    def _load_board(self) -> Board:
+        """Load the board and its settings before composing the widget tree."""
+        definition = _load_board_definition(self._board_source)
+        self._board_key = str(definition.path)
         if self._scan_workers is None:
-            self._scan_workers = board.workers
-        return board.columns
+            self._scan_workers = definition.workers
+        return definition.board
+
+    def _bind_board_actions(self) -> None:
+        """Install the application bindings declared by the board."""
+        for spec in self.board.bindings:
+            binding = spec if isinstance(spec, Binding) else Binding(*spec)
+            self.bind(
+                binding.key,
+                binding.action,
+                description=binding.description,
+                show=binding.show,
+                key_display=binding.key_display,
+            )
 
     @staticmethod
     def _bindings_help(cls: type, *, search_up: bool = False) -> Iterator[str]:  # noqa: PLW0211
         bindings = getattr(cls, "BINDINGS", []) if search_up else cls.__dict__.get("BINDINGS", [])
+        for binding in bindings:
+            if isinstance(binding, tuple):
+                binding = Binding(*binding)  # noqa: PLW2901
+            keys = "`, `".join(key.strip().upper().replace("+", "-") for key in binding.key.split(","))
+            yield f"- `{keys}`: {binding.description}"
+
+    @staticmethod
+    def _binding_specs_help(bindings: Iterable[Binding | tuple[str, str] | tuple[str, str, str]]) -> Iterator[str]:
+        """Format board binding descriptions for the help screen."""
         for binding in bindings:
             if isinstance(binding, tuple):
                 binding = Binding(*binding)  # noqa: PLW2901
