@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from git import TYPE_CHECKING, GitCommandError
+from git import GitCommandError
 
 from devboard import Column, Project, Row
 
@@ -118,29 +118,38 @@ class ToPull(Column):
         """
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 
-    def apply(self, action: str, row: Row) -> None:  # noqa: ARG002
+    def apply(self, action: str, row: Row) -> None:
         """Process actions.
 
-        It handles a single default action: running `git pull` for the selected row
-        (project and branch).
+        It can pull or delete the branch in the selected row.
         """
         project, branch, _ = row.data
-        message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
-        if not project.lock():
-            self.notify_warning(f"Prevented: {message}: An operation is ongoing")
-            return
-        if not project.is_dirty:
+        if action == "pull":
+            message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
+        elif action == "delete":
+            message = f"Deleting branch [i]{branch}[/] in [i]{project}[/]"
+        else:
+            raise ValueError(f"Unknown action '{action}'")
+
+        with project.locked() as acquired:
+            if not acquired:
+                self.notify_warning(f"Prevented: {message}: An operation is ongoing")
+                return
+            if action == "pull" and project.is_dirty:
+                self.notify_warning(f"Prevented: {message}: project is dirty")
+                return
+
             self.notify_info(f"Started: {message}")
             try:
-                project.pull(branch)
+                if action == "pull":
+                    project.pull(branch)
+                else:
+                    project.delete(branch)
             except GitCommandError as error:
                 self.notify_error(f"{message}: {error}", timeout=10)
             else:
                 self.notify_success(f"Finished: {message}")
                 row.remove()
-        else:
-            self.notify_warning(f"Prevented: {message}: project is dirty")
-        project.unlock()
 
 
 class ToPush(Column):
@@ -164,26 +173,28 @@ class ToPush(Column):
         """
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
-    def apply(self, action: str, row: Row) -> None:  # noqa: ARG002
+    def apply(self, action: str, row: Row) -> None:
         """Process actions.
 
         It handles a single default action: running `git push` for the selected row
         (project and branch).
         """
         project, branch, _ = row.data
+        if action != "push":
+            raise ValueError(f"Unknown action '{action}'")
         message = f"Pushing branch [i]{branch}[/] in [i]{project}[/]"
-        if not project.lock():
-            self.notify_warning(f"Prevented: {message}: An operation is ongoing")
-            return
-        self.notify_info(f"Started: {message}")
-        try:
-            project.push(branch)
-        except GitCommandError as error:
-            self.notify_error(f"{message}: {error}", timeout=10)
-        else:
-            self.notify_success(f"Finished: {message}")
-            row.remove()
-        project.unlock()
+        with project.locked() as acquired:
+            if not acquired:
+                self.notify_warning(f"Prevented: {message}: An operation is ongoing")
+                return
+            self.notify_info(f"Started: {message}")
+            try:
+                project.push(branch)
+            except GitCommandError as error:
+                self.notify_error(f"{message}: {error}", timeout=10)
+            else:
+                self.notify_success(f"Finished: {message}")
+                row.remove()
 
 
 class ToRelease(Column):

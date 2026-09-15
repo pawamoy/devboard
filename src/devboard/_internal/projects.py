@@ -59,8 +59,9 @@ class Project:
     many utility properties and methods.
     """
 
-    LOCKS: ClassVar[dict[Project, Lock]] = defaultdict(Lock)
-    """Locks for projects, to avoid concurrent operations."""
+    LOCKS: ClassVar[dict[Path, Lock]] = defaultdict(Lock)
+    """Locks keyed by resolved project path, to avoid concurrent operations."""
+    _LOCKS_GUARD: ClassVar[Lock] = Lock()
     DEFAULT_BRANCHES: ClassVar[tuple[str, ...]] = ("main", "master")
     """Name of common default branches. Mainly useful to compute unreleased commits."""
 
@@ -261,9 +262,25 @@ class Project:
         return TagReference(self.repo, f"refs/tags/{name}")
 
     def lock(self) -> bool:
-        """Lock project."""
-        return self.LOCKS[self].acquire(blocking=False)
+        """Try to lock the project path without waiting."""
+        return self._path_lock().acquire(blocking=False)
 
     def unlock(self) -> None:
-        """Unlock project."""
-        self.LOCKS[self].release()
+        """Unlock the project path."""
+        self._path_lock().release()
+
+    @contextmanager
+    def locked(self) -> Iterator[bool]:
+        """Try to lock the project path and release it when the context exits."""
+        acquired = self.lock()
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                self.unlock()
+
+    def _path_lock(self) -> Lock:
+        """Return the shared lock for this project's resolved path."""
+        path = self.path.resolve()
+        with self._LOCKS_GUARD:
+            return self.LOCKS[path]

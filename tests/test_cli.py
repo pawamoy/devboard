@@ -23,12 +23,29 @@ from __future__ import annotations
 import pytest
 
 from devboard import main
-from devboard._internal import debug
+from devboard._internal import cli, debug
 
 
-def test_main() -> None:
-    """Basic CLI test."""
-    assert main([]) == 0
+def test_main(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI starts the requested board and returns success."""
+    created_boards: list[str | None] = []
+    run_calls: list[None] = []
+
+    class StubApp:
+        def run(self) -> None:
+            run_calls.append(None)
+
+    def make_app(board: str | None) -> StubApp:
+        created_boards.append(board)
+        return StubApp()
+
+    monkeypatch.setattr(cli, "_make_app", make_app)
+
+    result = main(["work"])
+
+    assert result == 0
+    assert created_boards == ["work"]
+    assert run_calls == [None]
 
 
 def test_show_help(capsys: pytest.CaptureFixture) -> None:

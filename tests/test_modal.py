@@ -27,7 +27,11 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static
 
-from devboard._internal.modal import Modal
+from devboard._internal.modal import Modal, ModalMixin
+
+
+class ModalLauncher(Static, ModalMixin):
+    """A widget that can request a modal from a worker."""
 
 
 class EscapeApp(App[None]):
@@ -63,5 +67,29 @@ def test_escape_dismisses_modal_without_exiting_app() -> None:
 
             assert not isinstance(app.screen, Modal)
             assert not app.exit_requested
+
+    asyncio.run(run_test())
+
+
+def test_worker_can_open_modal_on_ui_thread() -> None:
+    """A background action requests its modal through Textual messages."""
+
+    class WorkerModalApp(App[None]):
+        def __init__(self) -> None:
+            super().__init__()
+            self.launcher = ModalLauncher("Main screen")
+
+        def compose(self) -> ComposeResult:
+            yield self.launcher
+
+    async def run_test() -> None:
+        app = WorkerModalApp()
+        async with app.run_test() as pilot:
+            app.run_worker(lambda: app.launcher.modal("Worker result"), thread=True)
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            await pilot.pause()
+
+            assert isinstance(app.screen, Modal)
+            assert str(app.screen.query_one(Static).content) == "Worker result"
 
     asyncio.run(run_test())

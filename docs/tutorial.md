@@ -386,22 +386,32 @@ class ToPull(Column):
 
     def apply(self, action, row):
         project, branch, _ = row.data
-        message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
-        if not project.lock():
-            self.notify_warning(f"Prevented: {message}: An operation is ongoing")
-            return
-        if not project.is_dirty:
+        if action == "pull":
+            message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
+        elif action == "delete":
+            message = f"Deleting branch [i]{branch}[/] in [i]{project}[/]"
+        else:
+            raise ValueError(f"Unknown action '{action}'")
+
+        with project.locked() as acquired:
+            if not acquired:
+                self.notify_warning(f"Prevented: {message}: An operation is ongoing")
+                return
+            if action == "pull" and project.is_dirty:
+                self.notify_warning(f"Prevented: {message}: project is dirty")
+                return
+
             self.notify_info(f"Started: {message}")
             try:
-                project.pull(branch)
+                if action == "pull":
+                    project.pull(branch)
+                else:
+                    project.delete(branch)
             except GitCommandError as error:
                 self.notify_error(f"{message}: {error}", timeout=10)
             else:
                 self.notify_success(f"Finished: {message}")
                 row.remove()
-        else:
-            self.notify_warning(f"Prevented: {message}: project is dirty")
-        project.unlock()
 ```
 
 When applying an action on a row (project and branch),
@@ -424,14 +434,17 @@ only one action can be applied on each project at a time.
 Other columns trying to apply an action on a locked project
 will notify the user with a warning message.
 
-To lock our project, we use [`project.lock()`][devboard.Project.lock].
-It it fails, it means the project was already locked,
-and we notify the user with a warning message.
-If it succeeds, we can continue and apply our action.
+Devboard gives each background action a stable snapshot of its row.
+Use `row.data` to read it and `row.remove()` to remove it after success.
+Do not access `self.table` or other Textual widgets from a background action.
+Use `self.modal()` and the notification helpers to request UI changes safely.
 
-Here we don't bother checking projects that are dirty,
-because it would not be safe to switch to other branches
-and/or pull commits from the remote repository.
+To lock our project, we use [`project.locked()`][devboard.Project.locked].
+If it fails, the project was already locked, so we notify the user.
+The context manager always unlocks the project when the action ends, including after an error.
+
+We do not pull projects that are dirty.
+It would not be safe to switch branches or pull remote commits in that state.
 
 Since pulling commits can take a few seconds or more,
 we notify the user that we started the command.
@@ -442,8 +455,6 @@ This message is displayed for a longer time, 10 seconds,
 to let the user read it.
 If all went well, we notify the user with a success message,
 and we remove the row from the board.
-
-Finally, and this is very important, we unlock the project.
 
 Lets add our new column to the board:
 
@@ -491,20 +502,22 @@ class ToPush(Column):
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
     def apply(self, action, row):
+        if action != "push":
+            raise ValueError(f"Unknown action '{action}'")
         project, branch, _ = row.data
         message = f"Pushing branch [i]{branch}[/] in [i]{project}[/]"
-        if not project.lock():
-            self.notify_warning(f"Prevented: {message}: An operation is ongoing")
-            return
-        self.notify_info(f"Started: {message}")
-        try:
-            project.push(branch)
-        except GitCommandError as error:
-            self.notify_error(f"{message}: {error}", timeout=10)
-        else:
-            self.notify_success(f"Finished: {message}")
-            row.remove()
-        project.unlock()
+        with project.locked() as acquired:
+            if not acquired:
+                self.notify_warning(f"Prevented: {message}: An operation is ongoing")
+                return
+            self.notify_info(f"Started: {message}")
+            try:
+                project.push(branch)
+            except GitCommandError as error:
+                self.notify_error(f"{message}: {error}", timeout=10)
+            else:
+                self.notify_success(f"Finished: {message}")
+                row.remove()
 ```
 
 Lets add our new column to the board:

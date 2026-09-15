@@ -38,6 +38,7 @@ As usual:
 1. run `make format` to auto-format the code
 1. run `make check` to check everything (fix any warning)
 1. run `make test` to run the tests (fix any issue)
+1. if you changed the terminal layout, run `.venv/bin/pytest tests/test_snapshots.py -c config/pytest.ini --snapshot-update` and review the updated SVG files
 1. if you updated the documentation or the project dependencies:
     1. run `make docs`
     1. go to http://localhost:8000 and check that everything looks good

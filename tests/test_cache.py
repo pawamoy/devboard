@@ -59,6 +59,29 @@ class OtherCacheColumn(CacheColumn):
     """A different column type with the same headers."""
 
 
+class WrappedCacheColumn(CacheColumn):
+    """A column with an explicit cache representation for text values."""
+
+    def __init__(self, path: Path) -> None:
+        """Initialize the column and its restoration log."""
+        super().__init__(path)
+        self.restored: list[str] = []
+
+    def serialize_cell(self, value: Any) -> Any:
+        """Wrap text so the cache format differs from the display format."""
+        if isinstance(value, str):
+            return {"text": value}
+        return value
+
+    def deserialize_cell(self, value: Any) -> Any:
+        """Restore wrapped text and record that the hook ran."""
+        if isinstance(value, dict) and set(value) == {"text"}:
+            text = value["text"]
+            self.restored.append(text)
+            return text
+        return value
+
+
 @pytest.fixture(name="cached_board")
 def _fixture_cached_board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for name in ("first", "second"):
@@ -101,10 +124,11 @@ def test_column_update_preserves_other_cached_columns(cached_board: Path, value:
 
     async def run_test() -> None:
         app = Devboard(board="test-board")
-        async with app.run_test():
+        async with app.run_test() as pilot:
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
             (cached_board / "second").write_text(value, encoding="utf-8")
             list(app.query(Column))[1].update()
+            await pilot.pause()
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
 
             assert cache._load("test-board") == {
@@ -133,7 +157,7 @@ def test_disabled_background_tasks_leave_cache_untouched(cached_board: Path) -> 
     asyncio.run(run_test())
 
 
-@pytest.mark.parametrize("change", ["unchanged", "reorder", "headers", "title", "type", "rows"])
+@pytest.mark.parametrize("change", ["unchanged", "reorder", "headers", "title", "type", "version", "rows"])
 def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.MonkeyPatch, change: str) -> None:
     """Reuse compatible snapshots and invalidate them when columns change."""
 
@@ -168,6 +192,8 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
             replacement.TITLE = columns[0].TITLE
             replacement.HEADERS = columns[0].HEADERS
             columns[0] = replacement
+        elif change == "version":
+            columns[0].CACHE_VERSION += 1
         monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)
         app = Devboard(board="test-board")
         show_cached = Mock(wraps=app._show_cached_columns)
@@ -178,6 +204,53 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
             assert show_cached.call_count == (1 if change == "unchanged" else 0)
             for column in columns:
                 assert column.table.current_row.data[1] == column.project.path.name
+
+    asyncio.run(run_test())
+
+
+def test_nested_cache_values_restore_projects(tmp_path: Path) -> None:
+    """Cache encoding preserves nested data and restores project references."""
+    project = Project(tmp_path / "project")
+    rows = [({"owner": project, "labels": ["ready", project]},)]
+
+    encoded = cache._encode_rows(rows)
+    decoded = cache._decode_rows(encoded, {str(project.path): project})
+
+    assert encoded == [
+        [
+            {
+                "owner": {"%project": str(project.path)},
+                "labels": ["ready", {"%project": str(project.path)}],
+            },
+        ],
+    ]
+    assert decoded == [({"owner": project, "labels": ["ready", project]},)]
+
+
+def test_column_cache_serialization_hooks(cached_board: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Columns can define a stable cache representation for custom cells."""
+
+    def make_columns() -> list[WrappedCacheColumn]:
+        return [WrappedCacheColumn(cached_board / name) for name in ("first", "second")]
+
+    async def run_test() -> None:
+        monkeypatch.setattr(Devboard, "_load_columns", lambda self: make_columns())
+        previous_app = Devboard(board="test-board")
+        async with previous_app.run_test():
+            await asyncio.wait_for(previous_app.workers.wait_for_complete(), timeout=5)
+
+        cached = cache._load("test-board")
+        assert cached is not None
+        assert cached["0"][0][1] == {"text": "first"}
+
+        columns = make_columns()
+        monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)
+        app = Devboard(board="test-board")
+        async with app.run_test():
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+        assert columns[0].restored == ["first"]
+        assert columns[1].restored == ["second"]
 
     asyncio.run(run_test())
 

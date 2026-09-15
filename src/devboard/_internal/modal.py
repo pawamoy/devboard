@@ -48,13 +48,7 @@ class Modal(ModalScreen):
 
     def on_key(self, event: Key) -> None:
         """Dismiss on any unbound key."""
-        active_bindings = getattr(self.app, "active_bindings", None)
-        if active_bindings is None:  # Textual < 1.0.
-            legacy_binding_chain = getattr(self.app, "_modal_binding_chain")  # noqa: B009
-            is_bound = any(bindings.keys.get(event.key) for _, bindings in legacy_binding_chain)
-        else:
-            is_bound = event.key in active_bindings
-        if not is_bound:
+        if event.key not in self.app.active_bindings:
             event.stop()
             self.dismiss()
 
@@ -66,5 +60,9 @@ class ModalMixin:
     """Textual application."""
 
     def modal(self, text: str) -> None:
-        """Push a modal."""
+        """Ask the UI thread to push a modal."""
+        self.app.call_later(self._push_modal, text)
+
+    def _push_modal(self, text: str) -> None:
+        """Create and push a modal on the UI thread."""
         self.app.push_screen(Modal(text=text))

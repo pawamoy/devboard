@@ -18,13 +18,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from contextlib import suppress
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
+from textual import on
 from textual.binding import Binding
 from textual.coordinate import Coordinate
+from textual.message import Message
 from textual.widgets import DataTable
-from textual.widgets.data_table import CellDoesNotExist, RowKey
+from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist, RowKey
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -59,6 +62,14 @@ class Checkbox:
         return self.checked
 
 
+class _RemoveRow(Message):
+    """Ask a data table to remove a row on the UI thread."""
+
+    def __init__(self, key: RowKey) -> None:
+        super().__init__()
+        self.key = key
+
+
 @dataclass
 class SelectableRow:
     """A selectable row."""
@@ -67,6 +78,8 @@ class SelectableRow:
     """The data table containing this row."""
     key: RowKey
     """The row key."""
+    _snapshot: list | None = field(default=None, repr=False)
+    """Stable row data used by background actions."""
 
     @property
     def app(self) -> App:
@@ -75,7 +88,7 @@ class SelectableRow:
 
     @property
     def _data(self) -> list:
-        return self.table.get_row(self.key)
+        return self._snapshot if self._snapshot is not None else self.table.get_row(self.key)
 
     @property
     def data(self) -> list:
@@ -110,8 +123,13 @@ class SelectableRow:
         return self.checkbox.checked
 
     def remove(self) -> None:
-        """Remove row from the table."""
-        self.table.remove_row(self.key)
+        """Ask the table to remove this row on the UI thread."""
+        self.table.post_message(_RemoveRow(self.key))
+
+    def _for_worker(self) -> SelectableRow:
+        """Copy the row data for safe use in a background worker."""
+        data = [Checkbox(self.checkbox.checked), *self.data]
+        return self.__class__(table=self.table, key=self.key, _snapshot=data)
 
     @property
     def previous(self) -> SelectableRow:
@@ -162,6 +180,16 @@ class SelectableRowsDataTable(DataTable):
         if columns:
             self.add_column("", key="checkbox")
         return self
+
+    # --------------------------------------------------
+    # Message handlers.
+    # --------------------------------------------------
+    @on(_RemoveRow)
+    def _on_remove_row(self, event: _RemoveRow) -> None:
+        """Remove a row requested by foreground or background code."""
+        event.stop()
+        with suppress(RowDoesNotExist):
+            self.remove_row(event.key)
 
     # --------------------------------------------------
     # Binding actions.
@@ -221,10 +249,8 @@ class SelectableRowsDataTable(DataTable):
     # --------------------------------------------------
     def force_refresh(self) -> None:
         """Force refresh table."""
-        # HACK: Without such increment, the table is refreshed
-        # only when focus changes to another column.
-        self._update_count += 1
-        self.refresh()
+        for row in self.selectable_rows:
+            self.update_cell(row.key, "checkbox", row.checkbox)
 
     @property
     def current_row(self) -> SelectableRow:

@@ -62,6 +62,11 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _make_app(board: str | None) -> Devboard:
+    """Create the application selected on the command line."""
+    return Devboard(board=board)
+
+
 def main(args: list[str] | None = None) -> int:
     """Run the main program.
 
@@ -78,6 +83,6 @@ def main(args: list[str] | None = None) -> int:
     if opts.show_config_dir:
         print(user_config_dir(appname="devboard"))
         return 0
-    app = Devboard(board=opts.board)
+    app = _make_app(opts.board)
     app.run()
     return 0
