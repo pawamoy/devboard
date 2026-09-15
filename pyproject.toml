@@ -29,7 +29,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "textual>=0.40",
+    "textual>=8.2",
     "gitpython>=3.1",
     "appdirs>=1.4.4",
     "tomli>=2.0; python_version < '3.11'",
@@ -87,6 +87,7 @@ ci = [
     "pytest>=8.2",
     "pytest-cov>=5.0",
     "pytest-randomly>=3.15",
+    "pytest-textual-snapshot>=1.1",
     "pytest-xdist>=3.6",
     "ruff>=0.4",
     "ty>=0.0.14",

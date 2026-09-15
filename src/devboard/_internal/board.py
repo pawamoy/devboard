@@ -23,7 +23,9 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from textual.binding import Binding
 from textual.containers import Container
+from textual.reactive import Reactive, reactive
 from textual.widgets import Static
+from textual.widgets.data_table import CellDoesNotExist
 
 from devboard._internal.datatable import SelectableRow, SelectableRowsDataTable
 from devboard._internal.modal import ModalMixin
@@ -60,16 +62,34 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     BINDINGS: ClassVar = [Binding("c", "toggle_collapse", "Collapse/expand column")]
     """Column key bindings."""
-    _collapsed: bool = False
-    _expanded_title: str | None = None
+    is_collapsed: Reactive[bool] = reactive(default=False, init=False, layout=True, toggle_class="-collapsed")
+    """Whether the column is collapsed."""
+    is_cached: Reactive[bool] = reactive(default=False, init=False)
+    """Whether the column displays cached data."""
     TITLE: str = ""
     """The title of the column."""
     HEADERS: tuple[str, ...] = ()
     """The data table headers."""
+    CACHE_VERSION: int = 1
+    """Version of the column's serialized cell format."""
     THREADED: bool = True
     """Whether actions of this column should run in the background."""
     DEFAULT_CLASSES = "box"
     """Textual CSS classes."""
+    DEFAULT_CSS = """
+    Column.-collapsed {
+        width: 3;
+    }
+
+    Column.-collapsed .column-title {
+        text-style: bold;
+    }
+
+    Column.-collapsed DataTable {
+        display: none;
+    }
+    """
+    """Styles owned by the reusable column widget."""
 
     # --------------------------------------------------
     # Textual methods.
@@ -79,12 +99,22 @@ class Column(Container, ModalMixin, NotifyMixin):
         yield Static("▶ " + self.TITLE, classes="column-title")
         yield DataTable(id="table")
 
+    def _watch_is_collapsed(self) -> None:
+        """Update the column when its collapsed state changes."""
+        self._refresh_presentation()
+        if self.is_mounted:
+            self.app.call_after_refresh(self._refresh_resized_tables)
+
+    def _watch_is_cached(self) -> None:
+        """Update the title when the cache state changes."""
+        self._refresh_presentation()
+
     # --------------------------------------------------
     # Binding actions.
     # --------------------------------------------------
     def action_toggle_collapse(self) -> None:
         """Collapse or expand the column."""
-        if self._collapsed:
+        if self.is_collapsed:
             self._expand()
             self.screen.set_focus(self.table)
         else:
@@ -95,12 +125,16 @@ class Column(Container, ModalMixin, NotifyMixin):
         """Apply an action to selected rows."""
         selected_rows = [cast("Row", row) for row in self.table.selected_rows]
         if not selected_rows:
-            selected_rows.append(cast("Row", self.table.current_row))
+            try:
+                selected_rows.append(cast("Row", self.table.current_row))
+            except CellDoesNotExist:
+                return
+        action_rows = [cast("Row", row._for_worker()) for row in selected_rows]
         if self.THREADED:
-            for row in selected_rows:
+            for row in action_rows:
                 self.run_worker(partial(self.apply, action=action, row=row), thread=True)
         else:
-            for row in selected_rows:
+            for row in action_rows:
                 self.apply(action=action, row=row)
 
     # --------------------------------------------------
@@ -115,12 +149,20 @@ class Column(Container, ModalMixin, NotifyMixin):
         """Update the column (ask the app to recompute its data)."""
         scan = getattr(self.app, "scan", None)
         if scan is not None:
-            scan([self])
+            self.app.call_later(scan, [self])
+
+    def serialize_cell(self, value: Any) -> Any:
+        """Convert a cell value to data that the cache can store."""
+        return value
+
+    def deserialize_cell(self, value: Any) -> Any:
+        """Restore a cell value loaded from the cache."""
+        return value
 
     def _reset(self) -> None:
         """Prepare the column for (re)population: restore styles, clear the table, show a loading indicator."""
         restore_table_focus = self.has_focus
-        self._expanded_title = "▶ " + self.TITLE
+        self.is_cached = False
         self._expand()
         table = self.table
         if restore_table_focus:
@@ -141,29 +183,35 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     def _mark_cached(self) -> None:
         """Show that the column currently displays cached (possibly stale) data."""
-        self._expanded_title = f"▶ {self.TITLE} [dim](cached)[/dim]"
-        title = self.query_one(".column-title", Static)
-        title.update(self._expanded_title)
+        self.is_cached = True
 
     def _collapse(self, *, focusable: bool = False) -> None:
         """Hide the table and optionally keep the column focusable."""
-        title = self.query_one(".column-title", Static)
-        title.styles.text_style = "bold"
-        title.update("▼ " + self.TITLE)
-        self.styles.width = 3
-        self.table.styles.display = "none"
-        self._collapsed = True
+        self.is_collapsed = True
         self.can_focus = focusable
+        self._refresh_presentation()
 
     def _expand(self) -> None:
         """Show the table at its normal width."""
-        title = self.query_one(".column-title", Static)
-        title.styles.text_style = None
-        title.update(self._expanded_title or "▶ " + self.TITLE)
-        self.styles.width = None
-        self.table.styles.display = "block"
-        self._collapsed = False
+        self.is_collapsed = False
         self.can_focus = False
+        self._refresh_presentation()
+
+    def _refresh_presentation(self) -> None:
+        """Project the column state into CSS classes and title text."""
+        if not self.is_mounted:
+            return
+        if self.is_collapsed:
+            text = "▼ " + self.TITLE
+        else:
+            suffix = " [dim](cached)[/dim]" if self.is_cached else ""
+            text = f"▶ {self.TITLE}{suffix}"
+        self.query_one(".column-title", Static).update(text)
+
+    def _refresh_resized_tables(self) -> None:
+        """Repaint table rows after a column changes the available width."""
+        for table in self.screen.query(DataTable):
+            table.force_refresh()
 
     def _finalize(self) -> None:
         """Finish a population cycle, collapsing the column if it's empty."""

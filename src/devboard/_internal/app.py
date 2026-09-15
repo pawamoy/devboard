@@ -19,17 +19,14 @@
 from __future__ import annotations
 
 import os
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from appdirs import user_config_dir
 from rich.markdown import Markdown
 from rich.text import Text
-from textual import on, work
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
@@ -39,13 +36,8 @@ from textual.worker import Worker, get_current_worker
 
 from devboard._internal import cache
 from devboard._internal.board import Column, DataTable
+from devboard._internal.loader import _load_board
 from devboard._internal.modal import Modal, ModalMixin
-
-# TODO: Remove once support for Python 3.10 is dropped.
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -107,16 +99,16 @@ class Devboard(App, ModalMixin):
         super().__init__(*args, **kwargs)
         self._board: str | Path | None = board
         self._board_key: str = str(board)
-        self._config_file: Path = Path(user_config_dir(), "devboard", "config.toml")
         self._background_tasks: bool = background_tasks
         self._scan_workers: int | None = workers
         self._scanning: bool = False
         self._task_progress: dict[Worker, str] = {}
         self._progress = Static("", id="task-progress", markup=False)
+        self._columns = tuple(self._load_columns())
 
     def compose(self) -> ComposeResult:
         """Compose the layout."""
-        for column in self._load_columns():
+        for column in self._columns:
             if isinstance(column, Column):
                 yield column
             else:
@@ -193,14 +185,13 @@ class Devboard(App, ModalMixin):
         column_list = list(columns) if columns is not None else list(self.query(Column))
         self.run_worker(partial(self._scan, column_list, initial=initial), thread=True)
 
-    @work(thread=True)
     def fetch_all(self) -> None:
         """Run `git fetch` in all projects, in background."""
         projects: dict[Path, Project] = {}
         for column in self.query(Column):
             for project in column.list_projects():
                 projects.setdefault(project.path.resolve(), project)
-        self._fetch_projects(projects.values())
+        self.run_worker(partial(self._fetch_projects, tuple(projects.values())), thread=True)
 
     def _scan(self, columns: list[Column], *, initial: bool) -> None:
         worker = get_current_worker()
@@ -222,11 +213,15 @@ class Devboard(App, ModalMixin):
             streaming = True
             if initial and use_cache and (cached := cache._load(self._board_key, schema=schema)) is not None:
                 projects_by_path = {str(project.path): project for project in columns_by_project}
-                cached_rows = {
-                    column: cache._decode_rows(cached[str(index)], projects_by_path)
-                    for index, column in enumerate(columns)
-                    if str(index) in cached and all(len(row) == len(column.HEADERS) for row in cached[str(index)])
-                }
+                cached_rows = {}
+                for index, column in enumerate(columns):
+                    key = str(index)
+                    if key not in cached or not all(len(row) == len(column.HEADERS) for row in cached[key]):
+                        continue
+                    decoded_rows = cache._decode_rows(cached[key], projects_by_path)
+                    cached_rows[column] = [
+                        tuple(column.deserialize_cell(value) for value in row) for row in decoded_rows
+                    ]
                 if len(cached_rows) == len(columns):
                     call(self._show_cached_columns, cached_rows)
                     streaming = False
@@ -269,18 +264,26 @@ class Devboard(App, ModalMixin):
 
             if use_cache:
                 cache._save(self._board_key, call(self._cache_data), schema=schema)
+            if initial and self._background_tasks and not worker.is_cancelled:
+                self._fetch_projects(set(columns_by_project))
         finally:
-            self._scanning = False
+            call(self._finish_scan)
 
-        if initial and self._background_tasks and not worker.is_cancelled:
-            self._fetch_projects(set(columns_by_project))
+    def _finish_scan(self) -> None:
+        """Mark the current scan as finished on the UI thread."""
+        self._scanning = False
 
     def _fetch_projects(self, projects: Iterable[Project]) -> None:
         worker = get_current_worker()
 
-        def fetch_project(project: Project) -> None:
-            if not worker.is_cancelled:
+        def fetch_project(project: Project) -> bool:
+            if worker.is_cancelled or not project.lock():
+                return False
+            try:
                 project.fetch()
+            finally:
+                project.unlock()
+            return True
 
         with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
             futures = {pool.submit(fetch_project, project): project for project in projects}
@@ -288,8 +291,9 @@ class Devboard(App, ModalMixin):
                 if worker.is_cancelled:
                     pool.shutdown(wait=False, cancel_futures=True)
                     return
-                future.result()
-                self.post_message(_TaskProgress(worker, f"Fetched {futures[future]} ({done}/{len(futures)})"))
+                fetched = future.result()
+                verb = "Fetched" if fetched else "Skipped"
+                self.post_message(_TaskProgress(worker, f"{verb} {futures[future]} ({done}/{len(futures)})"))
 
     @property
     def _max_workers(self) -> int:
@@ -323,49 +327,32 @@ class Devboard(App, ModalMixin):
     def _cache_schema(self) -> list[list[str]]:
         """Identify the ordered column types, IDs, titles, and headers in a snapshot."""
         return [
-            [f"{type(column).__module__}.{type(column).__qualname__}", column.id or "", column.TITLE, *column.HEADERS]
+            [
+                f"{type(column).__module__}.{type(column).__qualname__}",
+                column.id or "",
+                column.TITLE,
+                str(column.CACHE_VERSION),
+                *column.HEADERS,
+            ]
             for column in self.query(Column)
         ]
 
     def _cache_data(self) -> dict[str, list[tuple[Any, ...]]]:
         """Snapshot all displayed columns, including those not recomputed by a partial scan."""
         return {
-            str(index): [tuple(row.data) for row in column.table.selectable_rows]
+            str(index): [
+                tuple(column.serialize_cell(value) for value in row.data) for row in column.table.selectable_rows
+            ]
             for index, column in enumerate(self.query(Column))
         }
 
     def _load_columns(self) -> Iterable[Column | type[Column]]:
-        board: str | Path
-        try:
-            with self._config_file.open("rb") as config_file:
-                config: dict[str, Any] = tomllib.load(config_file)
-        except FileNotFoundError:
-            self._config_file.parent.mkdir(parents=True, exist_ok=True)
-            self._config_file.write_text('board = "default"')
-            config = {"board": "default"}
+        """Load columns and board settings before composing the widget tree."""
+        board = _load_board(self._board)
+        self._board_key = str(board.path)
         if self._scan_workers is None:
-            self._scan_workers = config.get("workers")
-        board = config["board"] if self._board is None else self._board
-        if isinstance(board, str):
-            board_file = self._config_file.parent.joinpath(f"{board}.py")
-            if not board_file.exists():
-                if board == "default":
-                    board_file.write_text(Path(__file__).parent.joinpath("default_board.py").read_text())
-                else:
-                    board_file = Path(board)
-        else:
-            board_file = board
-        if not board_file.exists():
-            raise ValueError(f"devboard: error: Unknown board '{board}'")
-        self._board_key = str(board_file)
-        module_path = "devboard.user_board"
-        spec = spec_from_file_location(module_path, str(board_file))
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Could not get import spec from '{module_path}'")
-        user_config = module_from_spec(spec)
-        sys.modules[module_path] = user_config
-        spec.loader.exec_module(user_config)
-        return user_config.columns
+            self._scan_workers = board.workers
+        return board.columns
 
     @staticmethod
     def _bindings_help(cls: type, *, search_up: bool = False) -> Iterator[str]:  # noqa: PLW0211

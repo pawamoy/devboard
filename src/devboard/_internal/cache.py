@@ -40,33 +40,58 @@ def _cache_file(board: str) -> Path:
     return _CACHE_DIR / f"{slug}-{digest}.json"
 
 
+def _encode_cell(cell: Any) -> Any:
+    """Convert a cell value to JSON-compatible data."""
+    if isinstance(cell, Project):
+        return {_PROJECT_KEY: str(cell.path)}
+    if cell is None or isinstance(cell, (str, int, float, bool)):
+        return cell
+    if isinstance(cell, (list, tuple)):
+        return [_encode_cell(item) for item in cell]
+    if isinstance(cell, dict) and all(isinstance(key, str) for key in cell):
+        return {key: _encode_cell(value) for key, value in cell.items()}
+    return str(cell)
+
+
 def _encode_rows(rows: list[tuple[Any, ...]]) -> list[list[Any]]:
-    encoded = []
-    for row in rows:
-        cells: list[Any] = []
-        for cell in row:
-            if isinstance(cell, Project):
-                cells.append({_PROJECT_KEY: str(cell.path)})
-            elif cell is None or isinstance(cell, (str, int, float, bool)):
-                cells.append(cell)
-            else:
-                cells.append(str(cell))
-        encoded.append(cells)
-    return encoded
+    """Convert rows to JSON-compatible data."""
+    return [[_encode_cell(cell) for cell in row] for row in rows]
+
+
+def _decode_cell(cell: Any, projects: dict[str, Project]) -> tuple[Any, bool]:
+    """Restore one cached cell and report whether all referenced projects exist."""
+    if isinstance(cell, dict) and set(cell) == {_PROJECT_KEY}:
+        project = projects.get(cell[_PROJECT_KEY])
+        return project, project is not None
+    if isinstance(cell, list):
+        values = []
+        for item in cell:
+            value, valid = _decode_cell(item, projects)
+            if not valid:
+                return None, False
+            values.append(value)
+        return values, True
+    if isinstance(cell, dict):
+        values = {}
+        for key, item in cell.items():
+            value, valid = _decode_cell(item, projects)
+            if not valid:
+                return None, False
+            values[key] = value
+        return values, True
+    return cell, True
 
 
 def _decode_rows(rows: list[list[Any]], projects: dict[str, Project]) -> list[tuple[Any, ...]]:
+    """Restore cached rows and drop rows that reference missing projects."""
     decoded = []
     for row in rows:
         cells: list[Any] = []
         for cell in row:
-            if isinstance(cell, dict) and _PROJECT_KEY in cell:
-                project = projects.get(cell[_PROJECT_KEY])
-                if project is None:
-                    break  # The project is gone: drop the row.
-                cells.append(project)
-            else:
-                cells.append(cell)
+            value, valid = _decode_cell(cell, projects)
+            if not valid:
+                break  # The project is gone: drop the row.
+            cells.append(value)
         else:
             decoded.append(tuple(cells))
     return decoded
