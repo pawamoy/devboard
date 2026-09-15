@@ -151,6 +151,7 @@ class Devboard(App, ModalMixin):
         lines = ["# Main keys\n\n"]
         lines.extend(self._bindings_help(Devboard))
         lines.extend(self._bindings_help(DataTable, search_up=True))
+        lines.extend(self._bindings_help(Column))
         for column in self.query(Column):
             lines.append(f"\n\n# {column.__class__.TITLE}\n\n")
             lines.extend(self._bindings_help(column.__class__))
