@@ -19,8 +19,9 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
+from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Static
 
@@ -57,6 +58,10 @@ class DataTable(SelectableRowsDataTable):
 class Column(Container, ModalMixin, NotifyMixin):
     """A Devboard column."""
 
+    BINDINGS: ClassVar = [Binding("c", "toggle_collapse", "Collapse/expand column")]
+    """Column key bindings."""
+    _collapsed: bool = False
+    _expanded_title: str | None = None
     TITLE: str = ""
     """The title of the column."""
     HEADERS: tuple[str, ...] = ()
@@ -77,6 +82,15 @@ class Column(Container, ModalMixin, NotifyMixin):
     # --------------------------------------------------
     # Binding actions.
     # --------------------------------------------------
+    def action_toggle_collapse(self) -> None:
+        """Collapse or expand the column."""
+        if self._collapsed:
+            self._expand()
+            self.screen.set_focus(self.table)
+        else:
+            self._collapse(focusable=True)
+            self.screen.set_focus(self)
+
     def action_apply(self, action: str = "default") -> None:
         """Apply an action to selected rows."""
         selected_rows = [cast("Row", row) for row in self.table.selected_rows]
@@ -105,12 +119,12 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     def _reset(self) -> None:
         """Prepare the column for (re)population: restore styles, clear the table, show a loading indicator."""
-        title = self.query_one(".column-title", Static)
-        title.styles.text_style = None
-        title.update("▶ " + self.TITLE)
-        self.styles.width = None
+        restore_table_focus = self.has_focus
+        self._expanded_title = "▶ " + self.TITLE
+        self._expand()
         table = self.table
-        table.styles.display = "block"
+        if restore_table_focus:
+            self.screen.set_focus(table)
         table.clear(columns=True)
         table.cursor_type = "row"
         for header in self.HEADERS:
@@ -127,19 +141,36 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     def _mark_cached(self) -> None:
         """Show that the column currently displays cached (possibly stale) data."""
+        self._expanded_title = f"▶ {self.TITLE} [dim](cached)[/dim]"
         title = self.query_one(".column-title", Static)
-        title.update(f"▶ {self.TITLE} [dim](cached)[/dim]")
+        title.update(self._expanded_title)
+
+    def _collapse(self, *, focusable: bool = False) -> None:
+        """Hide the table and optionally keep the column focusable."""
+        title = self.query_one(".column-title", Static)
+        title.styles.text_style = "bold"
+        title.update("▼ " + self.TITLE)
+        self.styles.width = 3
+        self.table.styles.display = "none"
+        self._collapsed = True
+        self.can_focus = focusable
+
+    def _expand(self) -> None:
+        """Show the table at its normal width."""
+        title = self.query_one(".column-title", Static)
+        title.styles.text_style = None
+        title.update(self._expanded_title or "▶ " + self.TITLE)
+        self.styles.width = None
+        self.table.styles.display = "block"
+        self._collapsed = False
+        self.can_focus = False
 
     def _finalize(self) -> None:
         """Finish a population cycle, collapsing the column if it's empty."""
         table = self.table
         table.loading = False
         if not table.row_count:
-            title = self.query_one(".column-title", Static)
-            title.styles.text_style = "bold"
-            title.update("▼ " + self.TITLE)
-            self.styles.width = 3
-            table.styles.display = "none"
+            self._collapse()
 
     # --------------------------------------------------
     # Methods to implement in subclasses.
