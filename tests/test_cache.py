@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class CacheColumn(Column):
+class CacheColumn(Column[Project]):
     TITLE = "Results"
     HEADERS: tuple[str, ...] = ("Project", "Value")
 
@@ -48,8 +48,7 @@ class CacheColumn(Column):
         """Return the column's project."""
         yield self.project
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:
+    def populate_rows(self, project: Project) -> list[tuple[Any, ...]]:
         """Read the current value without invoking Git."""
         value = project.path.read_text(encoding="utf-8")
         return [(project, value)] if value else []
@@ -92,7 +91,7 @@ def _fixture_cached_board(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pa
         "_load_columns",
         lambda self: [CacheColumn(tmp_path / name) for name in ("first", "second")],
     )
-    monkeypatch.setattr(Devboard, "_fetch_projects", lambda self, projects: None)
+    monkeypatch.setattr(Devboard, "_refresh_items", lambda self, items: None)
     return tmp_path
 
 
@@ -111,8 +110,18 @@ def test_refresh_saves_latest_results(cached_board: Path, refresh_key: str) -> N
 
                 assert app.query_one(Column).table.current_row.data[1] == value
                 assert cache._load("test-board") == {
-                    "0": [[{"%project": str(cached_board / "first")}, value]],
-                    "1": [[{"%project": str(cached_board / "second")}, "second"]],
+                    "0": [
+                        {
+                            "item": str(cached_board / "first"),
+                            "cells": [{"%item": True}, value],
+                        },
+                    ],
+                    "1": [
+                        {
+                            "item": str(cached_board / "second"),
+                            "cells": [{"%item": True}, "second"],
+                        },
+                    ],
                 }
 
     asyncio.run(run_test())
@@ -132,8 +141,20 @@ def test_column_update_preserves_other_cached_columns(cached_board: Path, value:
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
 
             assert cache._load("test-board") == {
-                "0": [[{"%project": str(cached_board / "first")}, "first"]],
-                "1": [[{"%project": str(cached_board / "second")}, value]] if value else [],
+                "0": [
+                    {
+                        "item": str(cached_board / "first"),
+                        "cells": [{"%item": True}, "first"],
+                    },
+                ],
+                "1": [
+                    {
+                        "item": str(cached_board / "second"),
+                        "cells": [{"%item": True}, value],
+                    },
+                ]
+                if value
+                else [],
             }
 
     asyncio.run(run_test())
@@ -177,7 +198,7 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
         if change == "rows":
             file = cache._cache_file("test-board")
             payload = json.loads(file.read_text(encoding="utf-8"))
-            payload["rows"]["0"][0].append("unexpected cell")
+            payload["rows"]["0"][0]["cells"].append("unexpected cell")
             file.write_text(json.dumps(payload), encoding="utf-8")
 
         columns = make_columns()
@@ -208,23 +229,32 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
     asyncio.run(run_test())
 
 
-def test_nested_cache_values_restore_projects(tmp_path: Path) -> None:
-    """Cache encoding preserves nested data and restores project references."""
+def test_nested_cache_values_restore_source_items(tmp_path: Path) -> None:
+    """Cache encoding preserves nested data and restores source-item references."""
     project = Project(tmp_path / "project")
-    rows = [({"owner": project, "labels": ["ready", project]},)]
+    rows = [
+        cache._CachedRow(
+            item_key=project.devboard_key,
+            item=project,
+            cells=({"owner": project, "labels": ["ready", project]},),
+        ),
+    ]
 
     encoded = cache._encode_rows(rows)
-    decoded = cache._decode_rows(encoded, {str(project.path): project})
+    decoded = cache._decode_rows(encoded, {cache._item_token(project.devboard_key): project})
 
     assert encoded == [
-        [
-            {
-                "owner": {"%project": str(project.path)},
-                "labels": ["ready", {"%project": str(project.path)}],
-            },
-        ],
+        {
+            "item": str(project.path),
+            "cells": [
+                {
+                    "owner": {"%item": True},
+                    "labels": ["ready", {"%item": True}],
+                },
+            ],
+        },
     ]
-    assert decoded == [({"owner": project, "labels": ["ready", project]},)]
+    assert decoded == [(project, ({"owner": project, "labels": ["ready", project]},))]
 
 
 def test_column_cache_serialization_hooks(cached_board: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -241,7 +271,7 @@ def test_column_cache_serialization_hooks(cached_board: Path, monkeypatch: pytes
 
         cached = cache._load("test-board")
         assert cached is not None
-        assert cached["0"][0][1] == {"text": "first"}
+        assert cached["0"][0]["cells"][1] == {"text": "first"}
 
         columns = make_columns()
         monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)

@@ -11,9 +11,10 @@ hide:
 Devboard displays columns stacked horizontally, like a Kanban board.
 Each column is a "To Do Something" and presents information in a data table.
 Data tables have a header line with labels, and multiple rows
-presenting the information collected in your projects.
-Projects are supposed to be Git repositories from which we can collect information
-such as status, commits, branches, tags, etc.
+presenting information collected from source items. An item can be a project,
+an issue, a pull request, or an object from another provider.
+The default board uses Git projects and collects their status, commits,
+branches, and tags.
 
 To start using Devboard, try to run the `devboard` command
 in your terminal. It will show you a default board with four columns:

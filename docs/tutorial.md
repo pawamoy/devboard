@@ -104,10 +104,10 @@ print(screenshot("columns/commit", size=(60, 16)))
 First, we create the column and add it to the board:
 
 ```python
-from devboard import Column
+from devboard import Column, Project
 
 
-class ToCommit(Column):
+class ToCommit(Column[Project]):
     TITLE = "To Commit"
 
 
@@ -123,17 +123,17 @@ Then we add it to the `columns` list, because Devboard uses this variable to bui
 
 Running `devboard` now shows our "To Commit" column, but it is empty.
 We will tell Devboard how to find the relevant projects for this column
-by implementing a `list_project` method on the class:
+by implementing a `list_items` method on the class:
 
 ```python hl_lines="1 2 8-12"
 from pathlib import Path
 from devboard import Column, Project
 
 
-class ToCommit(Column):
+class ToCommit(Column[Project]):
     TITLE = "To Commit"
 
-    def list_projects(self):
+    def list_items(self):
         base_dir = Path.home() / "dev"
         for filedir in base_dir.iterdir():
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
@@ -150,7 +150,8 @@ in which your projects actually are.
 Then we iterate on the files/directories within this base directory,
 and only keep the ones that repositories: they are directories and they
 have a `.git` folder inside.
-We yield instances of [`devboard.Project`][], because that's what Devboard expects.
+The type argument in `Column[Project]` says that this column scans projects.
+The `list_items` method therefore yields [`devboard.Project`][] instances.
 
 ### Populating rows of columns' data tables
 
@@ -165,18 +166,17 @@ from pathlib import Path
 from devboard import Column, Project
 
 
-class ToCommit(Column):
+class ToCommit(Column[Project]):
     TITLE = "To Commit"
     HEADERS = ("Project", "Details")
 
-    def list_projects(self):
+    def list_items(self):
         base_dir = Path.home() / "dev"
         for filedir in base_dir.iterdir():
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
                 yield Project(filedir)
 
-    @staticmethod
-    def populate_rows(project):
+    def populate_rows(self, project):
         status_line = project.status_line
         return [(project, status_line)] if status_line else []
 
@@ -194,8 +194,8 @@ Fortunately, the status line functionality is built into [`devboard.Project`][],
 so we can use it directly. An empty status line means the project is clean
 (no current modifications), in which case we don't add any row.
 
-You may have noticed that the method is a `staticmethod`.
-This is required by Devboard for technical reasons that are beyond this tutorial's scope.
+The `populate_rows` method receives each item returned by `list_items`.
+It can read either the item or the column's own state.
 
 Devboard is now able to show you a table of projects and status lines.
 If the column still shows up empty, try to create a few files in your projects,
@@ -215,7 +215,7 @@ from pathlib import Path
 from devboard import Column, Project, Row
 
 
-class ToCommit(Column):
+class ToCommit(Column[Project]):
     TITLE = "To Commit"
     HEADERS = ("Project", "Details")
     THREADED = False
@@ -224,22 +224,21 @@ class ToCommit(Column):
         ("d", "apply('diff')", "Show diff"),
     ]
 
-    def list_projects(self):
+    def list_items(self):
         base_dir = Path.home() / "dev"
         for filedir in base_dir.iterdir():
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
                 yield Project(filedir)
 
-    @staticmethod
-    def populate_rows(project):
+    def populate_rows(self, project):
         status_line = project.status_line
         return [(project, status_line)] if status_line else []
 
     def apply(self, action, row):
         if action == "status":
-            self.modal(text=row.project.repo.git(c="color.status=always").status())
+            self.modal(text=row.item.repo.git(c="color.status=always").status())
         elif action == "diff":
-            self.modal(text=row.project.repo.git(c="color.ui=always").diff())
+            self.modal(text=row.item.repo.git(c="color.ui=always").diff())
         else:
             raise ValueError(f"Unknown action '{action}'")
 
@@ -264,8 +263,8 @@ for more information.
 
 Next, we write our `apply` method, that takes an `action` (a string),
 and a [`devboard.Row`][] instance.
-This row instance has a `project` attribute that returns the [`devboard.Project`][]
-instance that we added to the row in `populate_rows`.
+This row instance has an `item` attribute that returns the [`devboard.Project`][]
+that produced it. The project does not have to be one of the displayed cells.
 The project itself has a `repo` attribute that returns a `Repo` object
 from the [GitPython](https://gitpython.readthedocs.io/en/stable/) library.
 We use its `git` attribute to run Git commands in the project.
@@ -308,13 +307,13 @@ when it's already merged or is not needed anymore.
 print(screenshot("columns/pull", size=(60, 16)))
 ```
 
-We create the column, directly implemeting its `list_projects` method:
+We create the column and implement its `list_items` method:
 
 ```python
-class ToPull(Column):
+class ToPull(Column[Project]):
     TITLE = "To Pull"
 
-    def list_projects(self):
+    def list_items(self):
         base_dir = Path.home() / "dev"
         for filedir in base_dir.iterdir():
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
@@ -334,27 +333,26 @@ def list_projects():
             yield Project(filedir)
 
 
-class ToPull(Column):
+class ToPull(Column[Project]):
     TITLE = "To Pull"
 
-    def list_projects(self):
+    def list_items(self):
         yield from list_projects()
 ```
 
-If needed, update the `list_projects` method of the `ToCommit` column too.
+If needed, update the `list_items` method of the `ToCommit` column too.
 
 Now lets implement the `populate_rows` method:
 
 ```python hl_lines="3 8-10"
-class ToPull(Column):
+class ToPull(Column[Project]):
     TITLE = "To Pull"
     HEADERS = ("Project", "Branch", "Commits")
 
-    def list_projects(self):
+    def list_items(self):
         yield from list_projects()
 
-    @staticmethod
-    def populate_rows(project: Project):
+    def populate_rows(self, project: Project):
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 ```
 
@@ -369,7 +367,7 @@ We can declare our bindings and our `apply` method:
 from git import GitCommandError
 
 
-class ToPull(Column):
+class ToPull(Column[Project]):
     TITLE = "To Pull"
     HEADERS = ("Project", "Branch", "Commits")
     BINDINGS = [
@@ -377,11 +375,10 @@ class ToPull(Column):
         ("d", "apply('delete')", "Delete branch"),
     ]
 
-    def list_projects(self):
+    def list_items(self):
         yield from list_projects()
 
-    @staticmethod
-    def populate_rows(project):
+    def populate_rows(self, project):
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 
     def apply(self, action, row):
@@ -487,18 +484,17 @@ print(screenshot("columns/push", size=(60, 16)))
 There is nothing new here, we can write the entire class at once:
 
 ```python
-class ToPush(Column):
+class ToPush(Column[Project]):
     TITLE = "To Push"
     HEADERS = ("Project", "Branch", "Commits")
     BINDINGS = [
         ("p", "apply('push')", "Push"),
     ]
 
-    def list_projects(self):
+    def list_items(self):
         yield from list_projects()
 
-    @staticmethod
-    def populate_rows(project):
+    def populate_rows(self, project):
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
     def apply(self, action, row):
@@ -566,15 +562,14 @@ print(screenshot("columns/release", size=(60, 16)))
 Again, nothing new here, lets write the entire class at once:
 
 ```python
-class ToRelease(Column):
+class ToRelease(Column[Project]):
     TITLE = "To Release"
     HEADERS = ("Project", "Details")
 
-    def list_projects(self):
+    def list_items(self):
         yield from list_projects()
 
-    @staticmethod
-    def populate_rows(project):
+    def populate_rows(self, project):
         commit_types = {"feat": "F", "fix": "X", "refactor": "R", "build": "B", "deps": "D"}
         by_type = {commit_type: 0 for commit_type in commit_types}
         for commit in project.unreleased():
@@ -610,6 +605,78 @@ Here is our final board with four columns:
 ```python exec="1" html="1" session="screenshots-tutorial"
 print(screenshot("columns/commit_pull_push_release", size=(100, 20), press=("tab",) * 3))
 ```
+
+## Using issues and pull requests
+
+A column can scan any Python type. Devboard provides `Project` because it adds
+Git operations, but it does not require other item types to inherit from a
+Devboard class. Use the issue type returned by your API client directly.
+
+The following example uses a small local issue model:
+
+```python
+import webbrowser
+from dataclasses import dataclass
+
+from devboard import Column, Row
+
+
+@dataclass
+class Issue:
+    repository: str
+    number: int
+    title: str
+    is_pull_request: bool = False
+
+    @property
+    def url(self):
+        kind = "pull" if self.is_pull_request else "issues"
+        return f"https://github.com/{self.repository}/{kind}/{self.number}"
+
+
+class ToTriage(Column[Issue]):
+    TITLE = "To Triage"
+    HEADERS = ("Issue", "Title")
+    BINDINGS = [("o", "apply('open')", "Open")]
+
+    def __init__(self, issues):
+        super().__init__()
+        self.issues = issues
+
+    def list_items(self):
+        yield from self.issues
+
+    def item_key(self, issue):
+        return issue.repository, issue.number
+
+    def populate_rows(self, issue):
+        return [(f"{issue.repository}#{issue.number}", issue.title)]
+
+    def apply(self, action, row: Row[Issue]):
+        if action != "open":
+            raise ValueError(f"Unknown action '{action}'")
+        webbrowser.open(row.item.url)
+```
+
+`row.item` is the source `Issue`, even though the table only displays strings.
+The `item_key` method lets Devboard recognize the same issue when an API client
+creates new instances. It also lets the cache reconnect stored rows to the
+current issue objects. The key must be hashable, stable between scans, and
+unique across the board. Include a provider name when different providers can
+return the same repository and number.
+
+Pull requests can use the same `Issue` type and a separate `Column[Issue]`.
+For example, its `populate_rows` method can return an empty list when
+`issue.is_pull_request` is false.
+
+With background tasks enabled, Devboard calls `refresh()` on items that provide
+it after the first scan. `Project.refresh()` fetches its Git remotes. API-backed
+columns can instead load current issues in `list_items`; they do not need to add
+a refresh method.
+
+Older project boards can continue to implement `list_projects` and use
+`row.project`. These names remain as compatibility aliases. New boards should
+use `list_items` and `row.item`.
 
 Now you can continue tinkering with your board,
 or delete your configuration file and re-run `devboard`

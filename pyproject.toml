@@ -4,7 +4,7 @@ build-backend = "pdm.backend"
 
 [project]
 name = "devboard"
-description = "A development dashboard for your projects."
+description = "A development dashboard for projects, issues, pull requests, and other work."
 authors = [{name = "Timothée Mazzucotelli", email = "dev@pawamoy.fr"}]
 license = "ISC"
 license-files = ["LICENSE"]

@@ -18,22 +18,22 @@ class Project(BaseProject):
 
 
 class ToCommit(ToCommit):
-    def list_projects(self):
+    def list_items(self):
         yield from Project.list_projects()
 
 
 class ToPull(ToPull):
-    def list_projects(self):
+    def list_items(self):
         yield from Project.list_projects()
 
 
 class ToPush(ToPush):
-    def list_projects(self):
+    def list_items(self):
         yield from Project.list_projects()
 
 
 class ToRelease(ToRelease):
-    def list_projects(self):
+    def list_items(self):
         yield from Project.list_projects()
 
 

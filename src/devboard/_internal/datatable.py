@@ -18,9 +18,9 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 from textual import on
 from textual.binding import Binding
@@ -33,6 +33,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from textual.app import App
+
+_ItemT = TypeVar("_ItemT")
+_MISSING_ITEM = object()
 
 
 @dataclass
@@ -71,15 +74,17 @@ class _RemoveRow(Message):
 
 
 @dataclass
-class SelectableRow:
+class SelectableRow(Generic[_ItemT]):
     """A selectable row."""
 
-    table: SelectableRowsDataTable
+    table: SelectableRowsDataTable[_ItemT]
     """The data table containing this row."""
     key: RowKey
     """The row key."""
     _snapshot: list | None = field(default=None, repr=False)
     """Stable row data used by background actions."""
+    _item_snapshot: _ItemT | object = field(default=_MISSING_ITEM, repr=False)
+    """Stable source item used by background actions."""
 
     @property
     def app(self) -> App:
@@ -94,6 +99,17 @@ class SelectableRow:
     def data(self) -> list:
         """Row data (without checkbox)."""
         return self._data[1:]
+
+    @property
+    def item(self) -> _ItemT:
+        """Item that produced this row.
+
+        Raises:
+            ValueError: If the row was added without a source item.
+        """
+        if self._item_snapshot is not _MISSING_ITEM:
+            return cast("_ItemT", self._item_snapshot)
+        return self.table._get_row_item(self.key)
 
     @property
     def index(self) -> int:
@@ -126,27 +142,28 @@ class SelectableRow:
         """Ask the table to remove this row on the UI thread."""
         self.table.post_message(_RemoveRow(self.key))
 
-    def _for_worker(self) -> SelectableRow:
+    def _for_worker(self) -> SelectableRow[_ItemT]:
         """Copy the row data for safe use in a background worker."""
         data = [Checkbox(self.checkbox.checked), *self.data]
-        return self.__class__(table=self.table, key=self.key, _snapshot=data)
+        item = self.table._row_items.get(self.key, _MISSING_ITEM)
+        return self.__class__(table=self.table, key=self.key, _snapshot=data, _item_snapshot=item)
 
     @property
-    def previous(self) -> SelectableRow:
+    def previous(self) -> SelectableRow[_ItemT]:
         """Previous row (up)."""
         new_coord = Coordinate(self.index - 1, 0)
         key = self.table.coordinate_to_cell_key(new_coord).row_key
         return self.__class__(table=self.table, key=key)
 
     @property
-    def next(self) -> SelectableRow:
+    def next(self) -> SelectableRow[_ItemT]:
         """Next row (down)."""
         new_coord = Coordinate(self.index + 1, 0)
         key = self.table.coordinate_to_cell_key(new_coord).row_key
         return self.__class__(table=self.table, key=key)
 
 
-class SelectableRowsDataTable(DataTable):
+class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
     """Data table with selectable rows."""
 
     ROW = SelectableRow
@@ -161,25 +178,51 @@ class SelectableRowsDataTable(DataTable):
     ]
     """Key bindings for selecting rows."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize the table and its row-to-item associations."""
+        self._row_items: dict[RowKey, _ItemT] = {}
+        self._associated_item: _ItemT | object = _MISSING_ITEM
+        super().__init__(*args, **kwargs)
+
     # --------------------------------------------------
     # Textual methods.
     # --------------------------------------------------
+    def add_row(
+        self,
+        *cells: Any,
+        height: int | None = 1,
+        key: str | None = None,
+        label: Any | None = None,
+    ) -> RowKey:
+        """Add a row with a checkbox and associate its source item, if set."""
+        row_key = super().add_row(Checkbox(), *cells, height=height, key=key, label=label)
+        if self._associated_item is not _MISSING_ITEM:
+            self._row_items[row_key] = cast("_ItemT", self._associated_item)
+        return row_key
+
     def add_rows(self, rows: Iterable[Iterable]) -> list[RowKey]:
         """Add rows.
 
         Automatically insert a column with checkboxes in position 0.
         """
-        return super().add_rows((Checkbox(), *row) for row in rows)
+        return [self.add_row(*row) for row in rows]
 
-    def clear(self, columns: bool = True) -> SelectableRowsDataTable:  # noqa: FBT001,FBT002
+    def clear(self, columns: bool = True) -> SelectableRowsDataTable[_ItemT]:  # noqa: FBT001,FBT002
         """Clear rows and optionally columns.
 
         When clearing columns, automatically re-add a column for checkboxes.
         """
         super().clear(columns)
+        self._row_items.clear()
         if columns:
             self.add_column("", key="checkbox")
         return self
+
+    def remove_row(self, row_key: RowKey | str) -> None:
+        """Remove a row and its source-item association."""
+        key = RowKey(row_key) if isinstance(row_key, str) else row_key
+        self._row_items.pop(key, None)
+        super().remove_row(row_key)
 
     # --------------------------------------------------
     # Message handlers.
@@ -247,25 +290,42 @@ class SelectableRowsDataTable(DataTable):
     # --------------------------------------------------
     # Additional methods/properties.
     # --------------------------------------------------
+    @contextmanager
+    def _associate_rows(self, item: _ItemT) -> Iterator[None]:
+        """Associate rows added in this context with their source item."""
+        previous_item = self._associated_item
+        self._associated_item = item
+        try:
+            yield
+        finally:
+            self._associated_item = previous_item
+
+    def _get_row_item(self, key: RowKey) -> _ItemT:
+        """Return the item associated with a row."""
+        try:
+            return self._row_items[key]
+        except KeyError as error:
+            raise ValueError("No item is associated with this row") from error
+
     def force_refresh(self) -> None:
         """Force refresh table."""
         for row in self.selectable_rows:
             self.update_cell(row.key, "checkbox", row.checkbox)
 
     @property
-    def current_row(self) -> SelectableRow:
+    def current_row(self) -> SelectableRow[_ItemT]:
         """Currently selected row."""
         key = self.coordinate_to_cell_key(self.cursor_coordinate).row_key
         return self.ROW(table=self, key=key)
 
     @property
-    def selectable_rows(self) -> Iterator[SelectableRow]:
+    def selectable_rows(self) -> Iterator[SelectableRow[_ItemT]]:
         """Rows, as selectable ones."""
         for key in self.rows:
             yield self.ROW(table=self, key=key)
 
     @property
-    def selected_rows(self) -> Iterator[SelectableRow]:
+    def selected_rows(self) -> Iterator[SelectableRow[_ItemT]]:
         """Selected rows."""
         for row in self.selectable_rows:
             if row.selected:

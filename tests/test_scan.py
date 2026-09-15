@@ -34,21 +34,25 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class FreshProjectsColumn(Column):
+class AlternateProject(Project):
+    """A separate project model that points to the same repositories."""
+
+
+class FreshProjectsColumn(Column[Project]):
     HEADERS = ("Project",)
 
-    def __init__(self, paths: list[Path]) -> None:
+    def __init__(self, paths: list[Path], project_type: type[Project] = Project) -> None:
         """Initialize a column that creates its own project instances."""
         super().__init__()
         self.paths = paths
+        self.project_type = project_type
 
     def list_projects(self) -> Iterator[Project]:
         """Create fresh instances, as user boards normally do."""
         for path in self.paths:
-            yield Project(path)
+            yield self.project_type(path)
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Project]]:
+    def populate_rows(self, project: Project) -> list[tuple[Project]]:
         """Show the project without running Git."""
         return [(project,)]
 
@@ -68,7 +72,7 @@ def test_repositories_shared_across_columns(
     alias.symlink_to(first, target_is_directory=True)
     columns = [
         FreshProjectsColumn([first, second]),
-        FreshProjectsColumn([alias, second]),
+        FreshProjectsColumn([alias, second], AlternateProject),
         FreshProjectsColumn([first]),
     ]
     fetched: list[Path] = []
@@ -87,5 +91,9 @@ def test_repositories_shared_across_columns(
             assert Counter(fetched) == {first: 1, second: 1}
             assert [column.table.row_count for column in columns] == [2, 2, 1]
             assert len({id(row.data[0]) for column in columns for row in column.table.selectable_rows}) == 2
+            for column in columns:
+                for row in column.table.selectable_rows:
+                    assert row.item is row.data[0]
+                    assert row.project is row.item
 
     asyncio.run(run_test())

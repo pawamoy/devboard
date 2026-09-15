@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 from textual.binding import Binding
 from textual.containers import Container
@@ -33,31 +33,73 @@ from devboard._internal.notifications import NotifyMixin
 from devboard._internal.projects import Project
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Hashable, Iterable, Iterator
 
     from textual.app import ComposeResult
 
+_ItemT = TypeVar("_ItemT")
 
-class Row(SelectableRow):
+
+class Row(SelectableRow[_ItemT], Generic[_ItemT]):
     """A Devboard row."""
+
+    def _for_worker(self) -> Row[_ItemT]:
+        """Copy this Devboard row for safe use in a background worker."""
+        return cast("Row[_ItemT]", super()._for_worker())
+
+    @property
+    def previous(self) -> Row[_ItemT]:
+        """Previous Devboard row."""
+        return cast("Row[_ItemT]", super().previous)
+
+    @property
+    def next(self) -> Row[_ItemT]:
+        """Next Devboard row."""
+        return cast("Row[_ItemT]", super().next)
 
     @property
     def project(self) -> Project:
-        """Devboard project."""
+        """Project associated with this row.
+
+        This compatibility property also finds a project in older rows that
+        stored it as a display cell.
+        """
+        try:
+            item = self.item
+        except ValueError:
+            pass
+        else:
+            if isinstance(item, Project):
+                return item
         for val in self.data:
             if isinstance(val, Project):
                 return val
         raise ValueError("No project in row data")
 
 
-class DataTable(SelectableRowsDataTable):
+class DataTable(SelectableRowsDataTable[_ItemT], Generic[_ItemT]):
     """A Devboard data table."""
 
     ROW = Row
     """The class to instantiate rows."""
 
+    @property
+    def current_row(self) -> Row[_ItemT]:
+        """Currently selected row."""
+        return cast("Row[_ItemT]", super().current_row)
 
-class Column(Container, ModalMixin, NotifyMixin):
+    @property
+    def selectable_rows(self) -> Iterator[Row[_ItemT]]:
+        """Rows, as Devboard rows."""
+        return cast("Iterator[Row[_ItemT]]", super().selectable_rows)
+
+    @property
+    def selected_rows(self) -> Iterator[Row[_ItemT]]:
+        """Selected Devboard rows."""
+        return cast("Iterator[Row[_ItemT]]", super().selected_rows)
+
+
+class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     """A Devboard column."""
 
     BINDINGS: ClassVar = [Binding("c", "toggle_collapse", "Collapse/expand column")]
@@ -123,13 +165,13 @@ class Column(Container, ModalMixin, NotifyMixin):
 
     def action_apply(self, action: str = "default") -> None:
         """Apply an action to selected rows."""
-        selected_rows = [cast("Row", row) for row in self.table.selected_rows]
+        selected_rows = list(self.table.selected_rows)
         if not selected_rows:
             try:
-                selected_rows.append(cast("Row", self.table.current_row))
+                selected_rows.append(self.table.current_row)
             except CellDoesNotExist:
                 return
-        action_rows = [cast("Row", row._for_worker()) for row in selected_rows]
+        action_rows = [row._for_worker() for row in selected_rows]
         if self.THREADED:
             for row in action_rows:
                 self.run_worker(partial(self.apply, action=action, row=row), thread=True)
@@ -141,9 +183,9 @@ class Column(Container, ModalMixin, NotifyMixin):
     # Additional methods/properties.
     # --------------------------------------------------
     @property
-    def table(self) -> DataTable:
+    def table(self) -> DataTable[_ItemT]:
         """Data table."""
-        return self.query_one("#table", DataTable)
+        return cast("DataTable[_ItemT]", self.query_one("#table", DataTable))
 
     def update(self) -> None:
         """Update the column (ask the app to recompute its data)."""
@@ -180,6 +222,11 @@ class Column(Container, ModalMixin, NotifyMixin):
         table.add_rows(rows)
         if self.HEADERS:
             table.sort(self.HEADERS[0].lower())
+
+    def _extend_item(self, item: _ItemT, rows: Iterable[tuple[Any, ...]]) -> None:
+        """Add rows and associate them with the item that produced them."""
+        with self.table._associate_rows(item):
+            self._extend(rows)
 
     def _mark_cached(self) -> None:
         """Show that the column currently displays cached (possibly stale) data."""
@@ -223,15 +270,38 @@ class Column(Container, ModalMixin, NotifyMixin):
     # --------------------------------------------------
     # Methods to implement in subclasses.
     # --------------------------------------------------
+    def list_items(self) -> Iterable[_ItemT]:
+        """List the items to scan for this column."""
+        return cast("Iterable[_ItemT]", self.list_projects())
+
+    def item_key(self, item: _ItemT, /) -> Hashable:
+        """Return the identity used to share and cache an item.
+
+        Keys must be hashable and unique across the board.
+        Objects can expose a `devboard_key` attribute to provide a stable
+        identity. Hashable objects otherwise use their own identity. Unhashable
+        objects use their process-local identity and should override this method
+        if their rows need to be restored from the on-disk cache.
+        """
+        key = getattr(item, "devboard_key", item)
+        try:
+            hash(key)
+        except TypeError:
+            return id(item)
+        return cast("Hashable", key)
+
     def list_projects(self) -> Iterable[Project]:
-        """List projects for this column."""
+        """List projects for this column.
+
+        This compatibility method is used by `list_items`. New columns
+        should implement `list_items` instead.
+        """
         return ()
 
-    @staticmethod
-    def populate_rows(project: Project) -> list[tuple[Any, ...]]:  # noqa: ARG004
-        """Populate rows for this column."""
+    def populate_rows(self, item: _ItemT, /) -> list[tuple[Any, ...]]:  # noqa: ARG002
+        """Build table rows for an item."""
         return []
 
-    def apply(self, action: str, row: Row) -> None:  # noqa: ARG002
+    def apply(self, action: str, row: Row[_ItemT]) -> None:  # noqa: ARG002
         """Apply action on given row."""
         return
