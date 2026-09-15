@@ -16,6 +16,8 @@ an issue, a pull request, or an object from another provider.
 The default board uses Git projects and collects their status, commits,
 branches, and tags.
 
+Press ++ctrl+r++ to scan the current project data again. Press ++ctrl+shift+r++ to fetch and then scan each project.
+
 To start using Devboard, try to run the `devboard` command
 in your terminal. It will show you a default board with four columns:
 

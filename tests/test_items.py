@@ -29,7 +29,7 @@ from unittest.mock import Mock
 from rich.text import Text
 from textual.widgets import Static
 
-from devboard import Column, Devboard, Project, Row
+from devboard import Board, Column, Devboard, Project, Row
 from devboard._internal import cache
 
 if TYPE_CHECKING:
@@ -132,7 +132,7 @@ def test_issue_and_project_columns_share_typed_source_items(
     project = Project(tmp_path / "devboard")
     project_column = ProjectsColumn(project)
     columns = [*issue_columns, project_column]
-    monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board(columns))
 
     async def run_test() -> None:
         app = Devboard(board="test-board", background_tasks=False)
@@ -150,7 +150,6 @@ def test_issue_and_project_columns_share_typed_source_items(
             project_row = project_column.table.current_row
             assert project_row.data == ["devboard"]
             assert project_row.item is project
-            assert project_row.project is project
 
     asyncio.run(run_test())
 
@@ -160,7 +159,7 @@ def test_issue_rows_restore_current_items_from_cache(tmp_path: Path, monkeypatch
     cached_issue = Issue("org/repo", 17, "Cached title")
     cached_column = IssuesColumn([cached_issue])
     monkeypatch.setattr(cache, "_CACHE_DIR", tmp_path / "cache")
-    monkeypatch.setattr(Devboard, "_load_columns", lambda self: [cached_column])
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([cached_column]))
 
     async def run_test() -> None:
         previous_app = Devboard(board="test-board")
@@ -179,7 +178,7 @@ def test_issue_rows_restore_current_items_from_cache(tmp_path: Path, monkeypatch
 
         current_issue = Issue("org/repo", 17, "Current title")
         current_column = IssuesColumn([current_issue])
-        monkeypatch.setattr(Devboard, "_load_columns", lambda self: [current_column])
+        monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([current_column]))
         app = Devboard(board="test-board")
         show_cached = Mock(wraps=app._show_cached_columns)
         monkeypatch.setattr(app, "_show_cached_columns", show_cached)
@@ -194,11 +193,32 @@ def test_issue_rows_restore_current_items_from_cache(tmp_path: Path, monkeypatch
     asyncio.run(run_test())
 
 
+def test_refresh_lists_backlog_items_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A normal board refresh discovers issues added by the provider."""
+    issues = [Issue("org/repo", 1, "First")]
+    column = IssuesColumn(issues)
+    board = Board([column], bindings=[("ctrl+r", "refresh", "Refresh")])
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False)
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            issues.append(Issue("org/repo", 2, "Second"))
+            await pilot.press("ctrl+r")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert [row.item.number for row in column.table.selectable_rows] == [1, 2]
+
+    asyncio.run(run_test())
+
+
 def test_issue_rows_keep_provider_order(monkeypatch: pytest.MonkeyPatch) -> None:
     """A later item waits for earlier item results before it reaches the table."""
     issues = [Issue("org/repo", 1, "First"), Issue("org/repo", 2, "Second")]
     column = OrderedIssuesColumn(issues)
-    monkeypatch.setattr(Devboard, "_load_columns", lambda self: [column])
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
 
     async def run_test() -> None:
         app = Devboard(board="test-board", background_tasks=False, workers=2)
@@ -213,7 +233,7 @@ def test_issue_rows_keep_provider_order(monkeypatch: pytest.MonkeyPatch) -> None
                     while True:
                         content = app.query_one("#task-progress", Static).content
                         progress = content.plain if isinstance(content, Text) else str(content)
-                        if progress == "Scanned org/repo#2 (1/2)":
+                        if progress == "Refreshed org/repo#2 (1/2)":
                             return
                         await asyncio.sleep(0.01)
 

@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from devboard import Column, Devboard, Project
+from devboard import Board, Column, Devboard, Project
 from devboard._internal import cache
 
 if TYPE_CHECKING:
@@ -38,6 +38,15 @@ class AlternateProject(Project):
     """A separate project model that points to the same repositories."""
 
 
+class FetchingBoard(Board):
+    """Fetch projects during forced refreshes."""
+
+    def force_refresh_item(self, item: object, /) -> None:
+        """Fetch project data before scanning it."""
+        if isinstance(item, Project):
+            item.fetch_locked()
+
+
 class FreshProjectsColumn(Column[Project]):
     HEADERS = ("Project",)
 
@@ -47,7 +56,7 @@ class FreshProjectsColumn(Column[Project]):
         self.paths = paths
         self.project_type = project_type
 
-    def list_projects(self) -> Iterator[Project]:
+    def list_items(self) -> Iterator[Project]:
         """Create fresh instances, as user boards normally do."""
         for path in self.paths:
             yield self.project_type(path)
@@ -57,7 +66,7 @@ class FreshProjectsColumn(Column[Project]):
         return [(project,)]
 
 
-@pytest.mark.parametrize("background_tasks", [True, False], ids=["startup", "fetch-all"])
+@pytest.mark.parametrize("background_tasks", [True, False], ids=["startup", "force-refresh"])
 def test_repositories_shared_across_columns(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -76,7 +85,8 @@ def test_repositories_shared_across_columns(
         FreshProjectsColumn([first]),
     ]
     fetched: list[Path] = []
-    monkeypatch.setattr(Devboard, "_load_columns", lambda self: columns)
+    board = FetchingBoard(columns, force_refresh_on_startup=True)
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
     monkeypatch.setattr(Project, "fetch", lambda self: fetched.append(self.path.resolve()))
     monkeypatch.setattr(cache, "_CACHE_DIR", tmp_path / "cache")
 
@@ -85,7 +95,7 @@ def test_repositories_shared_across_columns(
         async with app.run_test():
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
             if not background_tasks:
-                app.fetch_all()
+                app.force_refresh_board()
                 await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
 
             assert Counter(fetched) == {first: 1, second: 1}
@@ -94,6 +104,39 @@ def test_repositories_shared_across_columns(
             for column in columns:
                 for row in column.table.selectable_rows:
                     assert row.item is row.data[0]
-                    assert row.project is row.item
+
+    asyncio.run(run_test())
+
+
+def test_board_bindings_choose_normal_or_forced_refresh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A board decides which keys perform normal and forced refreshes."""
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    column = FreshProjectsColumn([repository])
+    board = FetchingBoard(
+        [column],
+        bindings=[
+            ("ctrl+r", "refresh", "Refresh"),
+            ("ctrl+shift+r", "force_refresh", "Force refresh"),
+        ],
+    )
+    fetched: list[Path] = []
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
+    monkeypatch.setattr(Project, "fetch", lambda self: fetched.append(self.path.resolve()))
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False)
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            await pilot.press("ctrl+r")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert fetched == []
+
+            await pilot.press("ctrl+shift+r")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert fetched == [repository]
 
     asyncio.run(run_test())

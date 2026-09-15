@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from git import GitCommandError
 
-from devboard import Column, Project, Row
+from devboard import Board, Column, Project, Row
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 BASE_DIR = Path(os.getenv("DEVBOARD_PROJECTS", Path.home() / "dev")).expanduser()
 """The base directory containing all your Git projects.
 
-This variable is only used to list projects in `MyProject.list_projects`
+This variable is only used to list projects in `MyProject.list_items`
 and has no special meaning for Devboard.
 """
 
@@ -44,12 +44,12 @@ class MyProject(Project):
     Feel free to add any attribute, property or method to it,
     to serve your own needs. You can also override its existing
     property and methods if needed. In the default class below,
-    we add the `list_projects` class method that will be passed
+    we add the `list_items` class method that will be passed
     to `Column` instances, allowing them to iterate on your projects.
     """
 
     @classmethod
-    def list_projects(cls) -> Iterator[MyProject]:
+    def list_items(cls) -> Iterator[MyProject]:
         """List all Git projects in a base directory."""
         for filedir in BASE_DIR.iterdir():
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
@@ -67,9 +67,9 @@ class ToCommit(Column[MyProject]):
         ("d", "apply('diff')", "Show diff"),
     ]
 
-    def list_projects(self) -> Iterator[MyProject]:
+    def list_items(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from MyProject.list_projects()
+        yield from MyProject.list_items()
 
     def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
@@ -105,9 +105,9 @@ class ToPull(Column[MyProject]):
         ("d", "apply('delete')", "Delete branch"),
     ]
 
-    def list_projects(self) -> Iterator[MyProject]:
+    def list_items(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from MyProject.list_projects()
+        yield from MyProject.list_items()
 
     def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
@@ -159,9 +159,9 @@ class ToPush(Column[MyProject]):
         ("p", "apply('push')", "Push"),
     ]
 
-    def list_projects(self) -> Iterator[MyProject]:
+    def list_items(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from MyProject.list_projects()
+        yield from MyProject.list_items()
 
     def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
@@ -200,9 +200,9 @@ class ToRelease(Column[MyProject]):
     TITLE = "To Release"
     HEADERS = ("Project", "Details")
 
-    def list_projects(self) -> Iterator[MyProject]:
+    def list_items(self) -> Iterator[MyProject]:
         """List projects for this column."""
-        yield from MyProject.list_projects()
+        yield from MyProject.list_items()
 
     def populate_rows(self, project: MyProject) -> list[tuple[Any, ...]]:
         """Scan a project, feeding rows to the table.
@@ -226,9 +226,20 @@ class ToRelease(Column[MyProject]):
         return []
 
 
-columns = [
-    ToCommit,
-    ToPull,
-    ToPush,
-    ToRelease,
-]
+class ProjectsBoard(Board):
+    """A board that can fetch Git projects before scanning them."""
+
+    def force_refresh_item(self, item: Any, /) -> None:
+        """Fetch a project before its columns scan it."""
+        if isinstance(item, Project):
+            item.fetch_locked()
+
+
+board = ProjectsBoard(
+    [ToCommit, ToPull, ToPush, ToRelease],
+    bindings=[
+        ("ctrl+r", "refresh", "Refresh"),
+        ("ctrl+shift+r", "force_refresh", "Force refresh"),
+    ],
+    force_refresh_on_startup=True,
+)

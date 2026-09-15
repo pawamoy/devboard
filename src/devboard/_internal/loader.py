@@ -23,11 +23,11 @@ import sys
 from dataclasses import dataclass
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from appdirs import user_config_dir
 
-from devboard._internal.board import Column
+from devboard._internal.board import Board, Column
 
 # TODO: Remove once support for Python 3.10 is dropped.
 if sys.version_info >= (3, 11):
@@ -35,16 +35,13 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-
 
 @dataclass(frozen=True)
 class _BoardDefinition:
     """A loaded board and the settings that affect it."""
 
     path: Path
-    columns: tuple[Column | type[Column], ...]
+    board: Board
     workers: int | None
 
 
@@ -60,8 +57,8 @@ def _load_board(board: str | Path | None, *, config_file: Path | None = None) ->
     workers = _validate_workers(config.get("workers"), config_file)
     selected_board = config.get("board", "default") if board is None else board
     board_file = _resolve_board_file(selected_board, config_file)
-    columns = _load_columns(board_file)
-    return _BoardDefinition(path=board_file.resolve(), columns=columns, workers=workers)
+    loaded_board = _load_board_object(board_file)
+    return _BoardDefinition(path=board_file.resolve(), board=loaded_board, workers=workers)
 
 
 def _load_config(config_file: Path) -> dict[str, Any]:
@@ -113,8 +110,8 @@ def _resolve_board_file(board: Any, config_file: Path) -> Path:
     return board_file
 
 
-def _load_columns(board_file: Path) -> tuple[Column | type[Column], ...]:
-    """Import a board module and return its validated columns."""
+def _load_board_object(board_file: Path) -> Board:
+    """Import a board module and return its validated board object."""
     digest = hashlib.sha256(str(board_file.resolve()).encode()).hexdigest()[:12]
     module_path = f"devboard.user_board_{digest}"
     spec = spec_from_file_location(module_path, board_file)
@@ -130,13 +127,14 @@ def _load_columns(board_file: Path) -> tuple[Column | type[Column], ...]:
         raise
 
     try:
-        columns: Iterable[Any] = user_board.columns
-        loaded_columns = tuple(columns)
-    except (AttributeError, TypeError) as error:
-        raise ValueError(f"devboard: error: Board '{board_file}' must define an iterable named 'columns'") from error
+        board = user_board.board
+    except AttributeError as error:
+        raise ValueError(f"devboard: error: Board '{board_file}' must define a Board instance named 'board'") from error
+    if not isinstance(board, Board):
+        raise TypeError(f"devboard: error: Invalid board {board!r} in '{board_file}'")
 
-    for column in loaded_columns:
+    for column in board.columns:
         is_column = isinstance(column, Column) or (isinstance(column, type) and issubclass(column, Column))
         if not is_column:
-            raise ValueError(f"devboard: error: Invalid column {column!r} in board '{board_file}'")
-    return loaded_columns
+            raise TypeError(f"devboard: error: Invalid column {column!r} in board '{board_file}'")
+    return board

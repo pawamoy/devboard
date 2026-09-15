@@ -21,7 +21,7 @@ from __future__ import annotations
 from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Container
 from textual.reactive import Reactive, reactive
 from textual.widgets import Static
@@ -30,7 +30,6 @@ from textual.widgets.data_table import CellDoesNotExist
 from devboard._internal.datatable import SelectableRow, SelectableRowsDataTable
 from devboard._internal.modal import ModalMixin
 from devboard._internal.notifications import NotifyMixin
-from devboard._internal.projects import Project
 
 if TYPE_CHECKING:
     from collections.abc import Hashable, Iterable, Iterator
@@ -56,25 +55,6 @@ class Row(SelectableRow[_ItemT], Generic[_ItemT]):
     def next(self) -> Row[_ItemT]:
         """Next Devboard row."""
         return cast("Row[_ItemT]", super().next)
-
-    @property
-    def project(self) -> Project:
-        """Project associated with this row.
-
-        This compatibility property also finds a project in older rows that
-        stored it as a display cell.
-        """
-        try:
-            item = self.item
-        except ValueError:
-            pass
-        else:
-            if isinstance(item, Project):
-                return item
-        for val in self.data:
-            if isinstance(val, Project):
-                return val
-        raise ValueError("No project in row data")
 
 
 class DataTable(SelectableRowsDataTable[_ItemT], Generic[_ItemT]):
@@ -189,9 +169,9 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
 
     def update(self) -> None:
         """Update the column (ask the app to recompute its data)."""
-        scan = getattr(self.app, "scan", None)
-        if scan is not None:
-            self.app.call_later(scan, [self])
+        refresh_board = getattr(self.app, "refresh_board", None)
+        if refresh_board is not None:
+            self.app.call_later(refresh_board, [self])
 
     def serialize_cell(self, value: Any) -> Any:
         """Convert a cell value to data that the cache can store."""
@@ -272,7 +252,7 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     # --------------------------------------------------
     def list_items(self) -> Iterable[_ItemT]:
         """List the items to scan for this column."""
-        return cast("Iterable[_ItemT]", self.list_projects())
+        return ()
 
     def item_key(self, item: _ItemT, /) -> Hashable:
         """Return the identity used to share and cache an item.
@@ -290,14 +270,6 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
             return id(item)
         return cast("Hashable", key)
 
-    def list_projects(self) -> Iterable[Project]:
-        """List projects for this column.
-
-        This compatibility method is used by `list_items`. New columns
-        should implement `list_items` instead.
-        """
-        return ()
-
     def populate_rows(self, item: _ItemT, /) -> list[tuple[Any, ...]]:  # noqa: ARG002
         """Build table rows for an item."""
         return []
@@ -305,3 +277,35 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     def apply(self, action: str, row: Row[_ItemT]) -> None:  # noqa: ARG002
         """Apply action on given row."""
         return
+
+
+class Board:
+    """A set of columns and the policies used to refresh their items."""
+
+    def __init__(
+        self,
+        columns: Iterable[Column | type[Column]],
+        *,
+        bindings: Iterable[BindingType] = (),
+        force_refresh_on_startup: bool = False,
+    ) -> None:
+        """Initialize the board.
+
+        Parameters:
+            columns: Column instances or classes displayed by the board.
+            bindings: Application bindings owned by the board.
+            force_refresh_on_startup: Whether startup uses the forced item hook.
+        """
+        self.columns: tuple[Column | type[Column], ...] = tuple(columns)
+        """Column instances or classes displayed by the board."""
+        self.bindings: tuple[BindingType, ...] = tuple(bindings)
+        """Application bindings owned by the board."""
+        self.force_refresh_on_startup: bool = force_refresh_on_startup
+        """Whether startup uses the forced item hook."""
+
+    def refresh_item(self, item: Any, /) -> None:
+        """Prepare one item for a normal scan."""
+
+    def force_refresh_item(self, item: Any, /) -> None:
+        """Prepare one item for a forced scan."""
+        self.refresh_item(item)
