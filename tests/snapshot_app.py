@@ -72,6 +72,7 @@ class SnapshotDevboard(Devboard):
     def __init__(self) -> None:
         """Initialize a deterministic board."""
         super().__init__(board="snapshot", background_tasks=False, workers=1)
+        self.theme = "textual-dark"
 
     def _load_board(self) -> Board:
         """Return the deterministic board used by snapshots."""
