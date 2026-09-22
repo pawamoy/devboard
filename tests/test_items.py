@@ -29,7 +29,7 @@ from unittest.mock import Mock
 from rich.text import Text
 from textual.widgets import Static
 
-from devboard import Board, Column, Devboard, Project, Row
+from devboard import Board, Column, Devboard, Project, Row, row_action
 from devboard._internal import cache
 
 if TYPE_CHECKING:
@@ -75,9 +75,9 @@ class IssuesColumn(Column[Issue]):
         """Display the title rather than the issue object."""
         return [(issue.title,)]
 
-    def apply(self, action: str, row: Row[Issue]) -> None:
+    @row_action
+    def action_record(self, row: Row[Issue]) -> None:
         """Record the typed source item received by an action."""
-        assert action == "default"
         self.applied.append(row.item)
 
 
@@ -144,7 +144,7 @@ def test_issue_and_project_columns_share_typed_source_items(
                 assert row.data == ["Make the board generic"]
                 assert row.item is canonical_issue
 
-                column.action_apply()
+                column.action_record()
                 assert column.applied == [canonical_issue]
 
             project_row = project_column.table.current_row

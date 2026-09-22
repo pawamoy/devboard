@@ -207,12 +207,11 @@ once you made sure the column is working.
 Now lets add some key bindings to our column.
 We want to show the output of `git status` when hitting ++s++,
 and the output of `git diff` when hitting ++d++.
-We do that by declaring the `BINDINGS` class variable,
-and by implementing the `apply` method:
+We do that by declaring the `BINDINGS` class variable and implementing Textual action methods. The [`row_action`][devboard.row_action] decorator gives each action a row:
 
 ```python hl_lines="2 8-12 26-32"
 from pathlib import Path
-from devboard import Board, Column, Project, Row
+from devboard import Board, Column, Project, Row, row_action
 
 
 class ToCommit(Column[Project]):
@@ -220,8 +219,8 @@ class ToCommit(Column[Project]):
     HEADERS = ("Project", "Details")
     THREADED = False
     BINDINGS = [
-        ("s", "apply('status')", "Show status"),
-        ("d", "apply('diff')", "Show diff"),
+        ("s", "status", "Show status"),
+        ("d", "diff", "Show diff"),
     ]
 
     def list_items(self):
@@ -234,13 +233,13 @@ class ToCommit(Column[Project]):
         status_line = project.status_line
         return [(project, status_line)] if status_line else []
 
-    def apply(self, action, row):
-        if action == "status":
-            self.modal(text=row.item.repo.git(c="color.status=always").status())
-        elif action == "diff":
-            self.modal(text=row.item.repo.git(c="color.ui=always").diff())
-        else:
-            raise ValueError(f"Unknown action '{action}'")
+    @row_action
+    def action_status(self, row):
+        self.modal(text=row.item.repo.git(c="color.status=always").status())
+
+    @row_action
+    def action_diff(self, row):
+        self.modal(text=row.item.repo.git(c="color.ui=always").diff())
 
 
 board = Board([
@@ -252,8 +251,7 @@ Bindings are a list of a 3-tuples.
 
 1. In the first item of the tuple, we write the key we want to bind.
     For multiple keys, separate them with commas.
-2. In the second item, we tell Devboard to apply a specific action,
-    for example `apply('status')` to apply a "status" action.
+2. In the second item, we specify an action name. For example, `status` calls `action_status`.
 3. In the third item, we write the description of the binding.
     It will appear in the footer, next to the keys you chose.
 
@@ -261,10 +259,9 @@ The `BINDINGS` variable is directly used by Textual:
 see [their Bindings documentation](https://textual.textualize.io/guide/input/#bindings)
 for more information.
 
-Next, we write our `apply` method, that takes an `action` (a string),
-and a [`devboard.Row`][] instance.
-This row instance has an `item` attribute that returns the [`devboard.Project`][]
-that produced it. The project does not have to be one of the displayed cells.
+Next, we write `action_status` and `action_diff`. Textual action methods normally receive no row. The `row_action` decorator supplies each selected row, or the current row if none are selected. It also runs actions in background workers unless the column sets `THREADED` to `False`.
+
+The [`devboard.Row`][] instance has an `item` attribute that returns the [`devboard.Project`][] that produced it. The project does not have to be one of the displayed cells.
 The project itself has a `repo` attribute that returns a `Repo` object
 from the [GitPython](https://gitpython.readthedocs.io/en/stable/) library.
 We use its `git` attribute to run Git commands in the project.
@@ -361,7 +358,7 @@ so it is easy to count the number of commits to be pulled per branch of a projec
 
 ### Actions running in the background, locking projects
 
-We can declare our bindings and our `apply` method:
+We can declare direct Textual actions and decorate them with `row_action`:
 
 ```python hl_lines="1 7-10 19-36"
 from git import GitCommandError
@@ -371,8 +368,8 @@ class ToPull(Column[Project]):
     TITLE = "To Pull"
     HEADERS = ("Project", "Branch", "Commits")
     BINDINGS = [
-        ("p", "apply('pull')", "Pull"),
-        ("d", "apply('delete')", "Delete branch"),
+        ("p", "pull", "Pull"),
+        ("d", "delete", "Delete branch"),
     ]
 
     def list_items(self):
@@ -381,29 +378,35 @@ class ToPull(Column[Project]):
     def populate_rows(self, project):
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 
-    def apply(self, action, row):
+    @row_action
+    def action_pull(self, row):
+        self._update_branch(row, delete=False)
+
+    @row_action
+    def action_delete(self, row):
+        self._update_branch(row, delete=True)
+
+    def _update_branch(self, row, *, delete):
         project, branch, _ = row.data
-        if action == "pull":
-            message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
-        elif action == "delete":
+        if delete:
             message = f"Deleting branch [i]{branch}[/] in [i]{project}[/]"
         else:
-            raise ValueError(f"Unknown action '{action}'")
+            message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
 
         with project.locked() as acquired:
             if not acquired:
                 self.notify_warning(f"Prevented: {message}: An operation is ongoing")
                 return
-            if action == "pull" and project.is_dirty:
+            if not delete and project.is_dirty:
                 self.notify_warning(f"Prevented: {message}: project is dirty")
                 return
 
             self.notify_info(f"Started: {message}")
             try:
-                if action == "pull":
-                    project.pull(branch)
-                else:
+                if delete:
                     project.delete(branch)
+                else:
+                    project.pull(branch)
             except GitCommandError as error:
                 self.notify_error(f"{message}: {error}", timeout=10)
             else:
@@ -416,13 +419,10 @@ we want to catch any error that happens.
 For this we import `GitCommandError` from `git`,
 to use it in `except` blocks.
 
-In our `apply` method, we start by getting the project and branch
-from the current row. It is done by unpacking the row's data.
-We also prepare our notification message.
+The action methods call `_update_branch` with the selected row. This helper starts by getting the project and branch from the row's data. It also prepares our notification message.
 It uses [Rich markup](https://rich.readthedocs.io/en/stable/markup.html).
 
-Since Devboard allows to select multiple rows
-and apply an action to all selected rows in the background,
+Since `row_action` can apply an action to multiple selected rows in the background,
 we want to make sure that we don't try and run
 a Git command that could change the state of a project,
 *while another column is already running such a command*.
@@ -488,7 +488,7 @@ class ToPush(Column[Project]):
     TITLE = "To Push"
     HEADERS = ("Project", "Branch", "Commits")
     BINDINGS = [
-        ("p", "apply('push')", "Push"),
+        ("p", "push", "Push"),
     ]
 
     def list_items(self):
@@ -497,9 +497,8 @@ class ToPush(Column[Project]):
     def populate_rows(self, project):
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
-    def apply(self, action, row):
-        if action != "push":
-            raise ValueError(f"Unknown action '{action}'")
+    @row_action
+    def action_push(self, row):
         project, branch, _ = row.data
         message = f"Pushing branch [i]{branch}[/] in [i]{project}[/]"
         with project.locked() as acquired:
@@ -631,7 +630,7 @@ The following example uses a small local issue model:
 import webbrowser
 from dataclasses import dataclass
 
-from devboard import Board, Column, Row
+from devboard import Board, Column, Row, row_action
 
 
 @dataclass
@@ -650,7 +649,7 @@ class Issue:
 class ToTriage(Column[Issue]):
     TITLE = "To Triage"
     HEADERS = ("Issue", "Title")
-    BINDINGS = [("o", "apply('open')", "Open")]
+    BINDINGS = [("o", "open", "Open")]
 
     def __init__(self, issues):
         super().__init__()
@@ -665,9 +664,8 @@ class ToTriage(Column[Issue]):
     def populate_rows(self, issue):
         return [(f"{issue.repository}#{issue.number}", issue.title)]
 
-    def apply(self, action, row: Row[Issue]):
-        if action != "open":
-            raise ValueError(f"Unknown action '{action}'")
+    @row_action
+    def action_open(self, row: Row[Issue]):
         webbrowser.open(row.item.url)
 
 

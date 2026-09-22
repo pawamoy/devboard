@@ -18,7 +18,7 @@
 
 from __future__ import annotations
 
-from functools import partial
+from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 from textual.binding import Binding, BindingType
@@ -32,7 +32,7 @@ from devboard._internal.modal import ModalMixin
 from devboard._internal.notifications import NotifyMixin
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable, Iterable, Iterator
+    from collections.abc import Callable, Hashable, Iterable, Iterator
 
     from textual.app import ComposeResult
 
@@ -169,8 +169,8 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
                 column._expand()
         self.screen.set_focus(self if self.is_collapsed else self.table)
 
-    def action_apply(self, action: str = "default") -> None:
-        """Apply an action to selected rows."""
+    def _apply_to_rows(self, action: Callable[[Row[_ItemT]], None]) -> None:
+        """Run an action for each selected row, or for the current row."""
         selected_rows = list(self.table.selected_rows)
         if not selected_rows:
             try:
@@ -180,10 +180,10 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         action_rows = [row._for_worker() for row in selected_rows]
         if self.THREADED:
             for row in action_rows:
-                self.run_worker(partial(self.apply, action=action, row=row), thread=True)
+                self.run_worker(partial(action, row), thread=True)
         else:
             for row in action_rows:
-                self.apply(action=action, row=row)
+                action(row)
 
     # --------------------------------------------------
     # Additional methods/properties.
@@ -300,9 +300,25 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         """Build table rows for an item."""
         return []
 
-    def apply(self, action: str, row: Row[_ItemT]) -> None:  # noqa: ARG002
-        """Apply action on given row."""
-        return
+
+_ActionColumnT = TypeVar("_ActionColumnT", bound=Column[Any])
+
+
+def row_action(method: Callable[[_ActionColumnT, Row[Any]], None]) -> Callable[[_ActionColumnT], None]:
+    """Adapt a row callback into a Textual action.
+
+    Decorate an `action_*` method and use the suffix as the binding action. For example, bind `open` to a decorated
+    `action_open` method.
+
+    The decorated method receives each selected row, or the current row when no rows are selected. Devboard runs each
+    call in a background worker unless the column sets `THREADED` to false.
+    """
+
+    @wraps(method)
+    def action(column: _ActionColumnT) -> None:
+        column._apply_to_rows(partial(method, column))
+
+    return action
 
 
 class Board:

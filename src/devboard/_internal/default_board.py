@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from git import GitCommandError
 
-from devboard import Board, Column, Project, Row
+from devboard import Board, Column, Project, Row, row_action
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -63,8 +63,8 @@ class ToCommit(Column[MyProject]):
     HEADERS = ("Project", "Details")
     THREADED = False
     BINDINGS: ClassVar = [
-        ("s", "apply('status')", "Show status"),
-        ("d", "apply('diff')", "Show diff"),
+        ("s", "status", "Show status"),
+        ("d", "diff", "Show diff"),
     ]
 
     def list_items(self) -> Iterator[MyProject]:
@@ -79,20 +79,15 @@ class ToCommit(Column[MyProject]):
         status_line = project.status_line
         return [(project, status_line)] if status_line else []
 
-    def apply(self, action: str, row: Row[MyProject]) -> None:
-        """Process actions.
+    @row_action
+    def action_status(self, row: Row[MyProject]) -> None:
+        """Show the selected project's Git status."""
+        self.modal(text=row.item.repo.git(c="color.status=always").status())
 
-        It handles two actions: `status` and `diff`.
-
-        - `status`: Show the Git status of the selected project in a modal window
-        - `diff`: Show the Git diff of the selected project in a modal window.
-        """
-        if action == "status":
-            self.modal(text=row.item.repo.git(c="color.status=always").status())
-        elif action == "diff":
-            self.modal(text=row.item.repo.git(c="color.ui=always").diff())
-        else:
-            raise ValueError(f"Unknown action '{action}'")
+    @row_action
+    def action_diff(self, row: Row[MyProject]) -> None:
+        """Show the selected project's Git diff."""
+        self.modal(text=row.item.repo.git(c="color.ui=always").diff())
 
 
 class ToPull(Column[MyProject]):
@@ -101,8 +96,8 @@ class ToPull(Column[MyProject]):
     TITLE = "To Pull"
     HEADERS = ("Project", "Branch", "Commits")
     BINDINGS: ClassVar = [
-        ("p", "apply('pull')", "Pull"),
-        ("d", "apply('delete')", "Delete branch"),
+        ("p", "pull", "Pull"),
+        ("d", "delete", "Delete branch"),
     ]
 
     def list_items(self) -> Iterator[MyProject]:
@@ -116,33 +111,38 @@ class ToPull(Column[MyProject]):
         """
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 
-    def apply(self, action: str, row: Row[MyProject]) -> None:
-        """Process actions.
+    @row_action
+    def action_pull(self, row: Row[MyProject]) -> None:
+        """Pull the branch in a selected row."""
+        self._update_branch(row, delete=False)
 
-        It can pull or delete the branch in the selected row.
-        """
+    @row_action
+    def action_delete(self, row: Row[MyProject]) -> None:
+        """Delete the branch in a selected row."""
+        self._update_branch(row, delete=True)
+
+    def _update_branch(self, row: Row[MyProject], *, delete: bool) -> None:
+        """Pull or delete the branch in a selected row."""
         project, branch, _ = row.data
-        if action == "pull":
-            message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
-        elif action == "delete":
+        if delete:
             message = f"Deleting branch [i]{branch}[/] in [i]{project}[/]"
         else:
-            raise ValueError(f"Unknown action '{action}'")
+            message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
 
         with project.locked() as acquired:
             if not acquired:
                 self.notify_warning(f"Prevented: {message}: An operation is ongoing")
                 return
-            if action == "pull" and project.is_dirty:
+            if not delete and project.is_dirty:
                 self.notify_warning(f"Prevented: {message}: project is dirty")
                 return
 
             self.notify_info(f"Started: {message}")
             try:
-                if action == "pull":
-                    project.pull(branch)
-                else:
+                if delete:
                     project.delete(branch)
+                else:
+                    project.pull(branch)
             except GitCommandError as error:
                 self.notify_error(f"{message}: {error}", timeout=10)
             else:
@@ -156,7 +156,7 @@ class ToPush(Column[MyProject]):
     TITLE = "To Push"
     HEADERS = ("Project", "Branch", "Commits")
     BINDINGS: ClassVar = [
-        ("p", "apply('push')", "Push"),
+        ("p", "push", "Push"),
     ]
 
     def list_items(self) -> Iterator[MyProject]:
@@ -170,15 +170,10 @@ class ToPush(Column[MyProject]):
         """
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
-    def apply(self, action: str, row: Row[MyProject]) -> None:
-        """Process actions.
-
-        It handles a single default action: running `git push` for the selected row
-        (project and branch).
-        """
+    @row_action
+    def action_push(self, row: Row[MyProject]) -> None:
+        """Push the branch in a selected row."""
         project, branch, _ = row.data
-        if action != "push":
-            raise ValueError(f"Unknown action '{action}'")
         message = f"Pushing branch [i]{branch}[/] in [i]{project}[/]"
         with project.locked() as acquired:
             if not acquired:

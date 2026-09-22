@@ -4,6 +4,7 @@ import os
 import time
 from pathlib import Path
 
+from devboard import row_action
 from devboard._internal.default_board import ProjectsBoard, ToCommit, ToPull, ToPush, ToRelease
 from devboard._internal.projects import Project as BaseProject
 
@@ -27,7 +28,8 @@ class ToPull(ToPull):
     def list_items(self):
         yield from Project.list_items()
 
-    def apply(self, action, row):
+    @row_action
+    def action_pull(self, row):
         project, branch, _ = row.data
         message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
         if not project.is_dirty:
