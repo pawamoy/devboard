@@ -4,7 +4,8 @@ import os
 import time
 from pathlib import Path
 
-from devboard._internal.default_board import ToCommit, ToPull, ToPush, ToRelease
+from devboard import row_action
+from devboard._internal.default_board import ProjectsBoard, ToCommit, ToPull, ToPush, ToRelease
 from devboard._internal.projects import Project as BaseProject
 
 BASE_DIR = Path(os.environ["PROJECTS_DIR"])
@@ -12,22 +13,23 @@ BASE_DIR = Path(os.environ["PROJECTS_DIR"])
 
 class Project(BaseProject):
     @classmethod
-    def list_projects(cls):
+    def list_items(cls):
         for filedir in BASE_DIR.iterdir():
             if filedir.is_dir() and filedir.joinpath(".git").is_dir():
                 yield cls(filedir)
 
 
 class ToCommit(ToCommit):
-    def list_projects(self):
-        yield from Project.list_projects()
+    def list_items(self):
+        yield from Project.list_items()
 
 
 class ToPull(ToPull):
-    def list_projects(self):
-        yield from Project.list_projects()
+    def list_items(self):
+        yield from Project.list_items()
 
-    def apply(self, action, row):
+    @row_action
+    def action_pull(self, row):
         project, branch, _ = row.data
         message = f"Pulling branch [i]{branch}[/] in [i]{project}[/]"
         if not project.is_dirty:
@@ -51,13 +53,22 @@ class ToPull(ToPull):
 
 
 class ToPush(ToPush):
-    def list_projects(self):
-        yield from Project.list_projects()
+    def list_items(self):
+        yield from Project.list_items()
 
 
 class ToRelease(ToRelease):
-    def list_projects(self):
-        yield from Project.list_projects()
+    def list_items(self):
+        yield from Project.list_items()
 
 
-columns = [ToCommit, ToPull, ToPush, ToRelease]
+board = ProjectsBoard(
+    [ToCommit, ToPull, ToPush, ToRelease],
+    bindings=[
+        ("question_mark", "show_help", "Help"),
+        ("ctrl+q, q, escape", "exit", "Exit"),
+        ("ctrl+r", "refresh", "Refresh"),
+        ("ctrl+shift+r", "force_refresh", "Force refresh"),
+    ],
+    force_refresh_on_startup=True,
+)
