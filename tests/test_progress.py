@@ -81,6 +81,28 @@ class ProgressColumn(Column[Project]):
         return [(project,)]
 
 
+class ReportingColumn(Column[object]):
+    """A column that reports progress while listing its items."""
+
+    def __init__(self) -> None:
+        """Initialize the events that control item listing."""
+        super().__init__()
+        self.clear_progress = Event()
+        self.progress_cleared = Event()
+        self.release = Event()
+        self.started = Event()
+
+    def list_items(self) -> Iterator[object]:
+        """Report progress until the test clears and releases the scan."""
+        self.report_progress("Fetching remote backlog")
+        self.started.set()
+        assert self.clear_progress.wait(5)
+        self.report_progress()
+        self.progress_cleared.set()
+        assert self.release.wait(5)
+        yield from ()
+
+
 @pytest.fixture(name="projects")
 def _fixture_projects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ProgressProject]]:
     projects = [ProgressProject(tmp_path / name) for name in ("first[repo]", "second", "third")]
@@ -218,5 +240,52 @@ def test_cancelled_tasks_clear_progress(projects: list[ProgressProject]) -> None
             finally:
                 for project in projects:
                     project.release_fetch.set()
+
+    asyncio.run(run_test())
+
+
+def test_column_can_report_and_clear_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A column can update and clear the status bar from the scan worker."""
+    column = ReportingColumn()
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False)
+        async with app.run_test():
+            try:
+                assert await asyncio.to_thread(column.started.wait, 5)
+                await _wait_for_progress(app, "Fetching remote backlog")
+
+                column.clear_progress.set()
+                assert await asyncio.to_thread(column.progress_cleared.wait, 5)
+                await _wait_for_progress(app, "")
+
+                column.release.set()
+                await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            finally:
+                column.clear_progress.set()
+                column.release.set()
+
+    asyncio.run(run_test())
+
+
+def test_cancelled_worker_clears_column_progress(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cancelling a worker clears progress that its column reported."""
+    column = ReportingColumn()
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False)
+        async with app.run_test():
+            try:
+                assert await asyncio.to_thread(column.started.wait, 5)
+                await _wait_for_progress(app, "Fetching remote backlog")
+
+                app.workers.cancel_all()
+
+                await _wait_for_progress(app, "")
+            finally:
+                column.clear_progress.set()
+                column.release.set()
 
     asyncio.run(run_test())

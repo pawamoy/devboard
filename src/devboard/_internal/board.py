@@ -199,6 +199,18 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         if refresh_board is not None:
             self.app.call_later(refresh_board, [self])
 
+    def report_progress(self, description: str | None = None) -> None:
+        """Show progress in the status bar.
+
+        Devboard automatically clears progress associated with a worker when that worker finishes or is cancelled.
+
+        Parameters:
+            description: Progress text. Omit the text to clear the current progress.
+        """
+        report_progress = getattr(self.app, "_report_progress", None)
+        if report_progress is not None:
+            report_progress(self, description)
+
     def serialize_cell(self, value: Any) -> Any:
         """Convert a cell value to data that the cache can store."""
         return value

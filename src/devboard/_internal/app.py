@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 from collections.abc import Hashable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -33,7 +34,7 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
 from textual.widgets import Footer, Static
-from textual.worker import Worker, get_current_worker
+from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from devboard._internal import cache
 from devboard._internal.board import Board, Column, DataTable
@@ -57,12 +58,12 @@ are faster in that situation.
 """
 
 
-class _TaskProgress(Message):
-    """Report a completed item task."""
+class _Progress(Message):
+    """Update or clear progress for one source."""
 
-    def __init__(self, worker: Worker, description: str) -> None:
+    def __init__(self, source: object, description: str | None) -> None:
         super().__init__()
-        self.worker = worker
+        self.source = source
         self.description = description
 
 
@@ -103,7 +104,7 @@ class Devboard(App, ModalMixin):
         self._background_tasks: bool = background_tasks
         self._scan_workers: int | None = workers
         self._scanning: bool = False
-        self._task_progress: dict[Worker, str] = {}
+        self._progress_by_source: dict[object, str] = {}
         self._progress = Static("", id="task-progress", markup=False)
         self.board: Board = self._load_board()
         """The loaded board definition."""
@@ -126,18 +127,21 @@ class Devboard(App, ModalMixin):
         force = self._background_tasks and self.board.force_refresh_on_startup
         self.scan(initial=True, force=force)
 
-    @on(_TaskProgress)
-    def _on_task_progress(self, event: _TaskProgress) -> None:
-        if not event.worker.is_finished and not event.worker.is_cancelled:
-            # Keep the most recent completion last, even when workers overlap.
-            self._task_progress.pop(event.worker, None)
-            self._task_progress[event.worker] = event.description
-            self._refresh_task_progress()
+    @on(_Progress)
+    def _on_progress(self, event: _Progress) -> None:
+        source = event.source
+        self._progress_by_source.pop(source, None)
+        if event.description is not None and not (
+            isinstance(source, Worker) and (source.is_finished or source.is_cancelled)
+        ):
+            # Keep the most recent update last, even when progress sources overlap.
+            self._progress_by_source[source] = event.description
+        self._refresh_task_progress()
 
     @on(Worker.StateChanged)
     def _on_task_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.worker.is_finished:
-            self._task_progress.pop(event.worker, None)
+            self._progress_by_source.pop(event.worker, None)
             self._refresh_task_progress()
 
     # --------------------------------------------------
@@ -172,8 +176,14 @@ class Devboard(App, ModalMixin):
     # Additional methods/properties.
     # --------------------------------------------------
     def _refresh_task_progress(self) -> None:
-        description = next(reversed(self._task_progress.values()), "")
+        description = next(reversed(self._progress_by_source.values()), "")
         self._progress.update(Text(description, no_wrap=True, overflow="ellipsis"))
+
+    def _report_progress(self, source: object, description: str | None) -> None:
+        """Post a progress update from a column or its active worker."""
+        with suppress(NoActiveWorker):
+            source = get_current_worker()
+        self.post_message(_Progress(source, description))
 
     def refresh_board(self, columns: Iterable[Column] | None = None) -> None:
         """Refresh columns without forcing their items to update external state."""
@@ -286,7 +296,7 @@ class Devboard(App, ModalMixin):
                         next_item[column] = index
                     item = canonical[identity]
                     verb = "Force-refreshed" if force else "Refreshed"
-                    self.post_message(_TaskProgress(worker, f"{verb} {item} ({done}/{len(futures)})"))
+                    self.post_message(_Progress(worker, f"{verb} {item} ({done}/{len(futures)})"))
 
             if streaming:
                 call(self._finalize_columns, columns)
