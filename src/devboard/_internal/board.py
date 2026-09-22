@@ -21,11 +21,13 @@ from __future__ import annotations
 from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
+from textual import on
 from textual.binding import Binding, BindingType
 from textual.containers import Container
+from textual.message import Message
 from textual.reactive import Reactive, reactive
 from textual.widgets import Static
-from textual.widgets.data_table import CellDoesNotExist
+from textual.widgets.data_table import CellDoesNotExist, RowKey
 
 from devboard._internal.datatable import SelectableRow, SelectableRowsDataTable
 from devboard._internal.modal import ModalMixin
@@ -37,6 +39,10 @@ if TYPE_CHECKING:
     from textual.app import ComposeResult
 
 _ItemT = TypeVar("_ItemT")
+
+
+class _TableEmptied(Message):
+    """Report that a Devboard table lost its final row."""
 
 
 class Row(SelectableRow[_ItemT], Generic[_ItemT]):
@@ -62,6 +68,12 @@ class DataTable(SelectableRowsDataTable[_ItemT], Generic[_ItemT]):
 
     ROW = Row
     """The class to instantiate rows."""
+
+    def remove_row(self, row_key: RowKey | str) -> None:
+        """Remove a row and report when the table becomes empty."""
+        super().remove_row(row_key)
+        if not self.row_count:
+            self.post_message(_TableEmptied())
 
     @property
     def current_row(self) -> Row[_ItemT]:
@@ -134,6 +146,12 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     def _watch_is_cached(self) -> None:
         """Update the title when the cache state changes."""
         self._refresh_presentation()
+
+    @on(_TableEmptied)
+    def _on_table_emptied(self, event: _TableEmptied) -> None:
+        """Apply the empty-column state after the final row is removed."""
+        event.stop()
+        self._finalize()
 
     # --------------------------------------------------
     # Binding actions.

@@ -58,6 +58,26 @@ class ColumnApp(App[None]):
         yield self.third_column
 
 
+def test_removing_last_row_collapses_and_disables_column() -> None:
+    """A column leaves the focus chain when its final row disappears."""
+
+    async def run_test() -> None:
+        app = ColumnApp()
+        async with app.run_test() as pilot:
+            column = app.column
+
+            column.table.current_row.remove()
+            await pilot.pause()
+
+            assert column.table.row_count == 0
+            assert column.is_collapsed is True
+            assert column.can_focus is False
+            assert column not in app.screen.focus_chain
+            assert column.table not in app.screen.focus_chain
+
+    asyncio.run(run_test())
+
+
 def test_c_key_collapses_and_expands_focused_column() -> None:
     """The C key toggles a populated column between its full and compact layouts."""
 
