@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 from typing import ClassVar
 
+from rich.markdown import Markdown
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Static
@@ -91,5 +92,20 @@ def test_worker_can_open_modal_on_ui_thread() -> None:
 
             assert isinstance(app.screen, Modal)
             assert str(app.screen.query_one(Static).content) == "Worker result"
+
+    asyncio.run(run_test())
+
+
+def test_modal_accepts_rich_renderable() -> None:
+    """A modal preserves Rich content so Textual can render its formatting."""
+    markdown = Markdown("# Issue title\n\nIssue **description**")
+
+    async def run_test() -> None:
+        app = EscapeApp()
+        async with app.run_test() as pilot:
+            app.push_screen(Modal(text=markdown))
+            await pilot.pause()
+
+            assert app.screen.query_one(Static).content is markdown
 
     asyncio.run(run_test())

@@ -26,6 +26,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Static
 
 if TYPE_CHECKING:
+    from rich.console import RenderableType
     from textual.app import App, ComposeResult
     from textual.events import Key
 
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
 class Modal(ModalScreen):
     """A modal screen."""
 
-    def __init__(self, *args: Any, text: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, text: RenderableType, **kwargs: Any) -> None:
         """Initialize the screen."""
         super().__init__(*args, **kwargs)
         if isinstance(text, str):
@@ -59,10 +60,10 @@ class ModalMixin:
     app: App
     """Textual application."""
 
-    def modal(self, text: str) -> None:
-        """Ask the UI thread to push a modal."""
+    def modal(self, text: RenderableType) -> None:
+        """Ask the UI thread to show text or a Rich renderable in a modal."""
         self.app.call_later(self._push_modal, text)
 
-    def _push_modal(self, text: str) -> None:
+    def _push_modal(self, text: RenderableType) -> None:
         """Create and push a modal on the UI thread."""
         self.app.push_screen(Modal(text=text))
