@@ -193,6 +193,11 @@ class Devboard(App, ModalMixin):
         """Refresh columns after forcing their items to update external state."""
         self.scan(columns, force=True)
 
+    def _update_cache(self) -> None:
+        """Save the board currently displayed after a row operation."""
+        if self._background_tasks:
+            cache._save(self._board_key, self._cache_data(), schema=self._cache_schema())
+
     def scan(
         self,
         columns: Iterable[Column] | None = None,

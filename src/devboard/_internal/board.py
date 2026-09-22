@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
@@ -28,6 +30,7 @@ from textual.message import Message
 from textual.reactive import Reactive, reactive
 from textual.widgets import Static
 from textual.widgets.data_table import CellDoesNotExist, RowKey
+from textual.worker import WorkerCancelled, WorkerFailed
 
 from devboard._internal.datatable import SelectableRow, SelectableRowsDataTable
 from devboard._internal.modal import ModalMixin
@@ -37,6 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Hashable, Iterable, Iterator
 
     from textual.app import ComposeResult
+    from textual.worker import Worker
 
 _ItemT = TypeVar("_ItemT")
 
@@ -191,17 +195,70 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         """Run an action for each selected row, or for the current row."""
         selected_rows = list(self.table.selected_rows)
         if not selected_rows:
-            try:
+            with suppress(CellDoesNotExist):
                 selected_rows.append(self.table.current_row)
-            except CellDoesNotExist:
-                return
         action_rows = [row._for_worker() for row in selected_rows]
+        workers: list[Worker[Exception | None]] = []
+        errors: tuple[Exception, ...] = ()
         if self.THREADED:
-            for row in action_rows:
-                self.run_worker(partial(action, row), thread=True)
+            workers = [self.run_worker(partial(self._run_row_action, action, row), thread=True) for row in action_rows]
         else:
-            for row in action_rows:
-                action(row)
+            try:
+                for row in action_rows:
+                    action(row)
+            except Exception as error:  # noqa: BLE001
+                errors = (error,)
+
+        if not self.THREADED and getattr(self.app, "_update_cache", None) is None:
+            if errors:
+                raise errors[0]
+            return
+        self.run_worker(self._finish_row_operation(workers, errors))
+
+    @staticmethod
+    def _run_row_action(action: Callable[[Row[_ItemT]], None], row: Row[_ItemT]) -> Exception | None:
+        """Run one threaded row action and return any error to the batch coordinator."""
+        try:
+            action(row)
+        except Exception as error:  # noqa: BLE001
+            return error
+        return None
+
+    async def _finish_row_operation(
+        self,
+        workers: list[Worker[Exception | None]],
+        errors: tuple[Exception, ...] = (),
+    ) -> None:
+        """Update the cache once after every worker in a row operation finishes."""
+        results = await asyncio.gather(*(worker.wait() for worker in workers), return_exceptions=True)
+        await self._update_cache_after_messages()
+        for result in (*errors, *results):
+            if isinstance(result, WorkerCancelled):
+                continue
+            if isinstance(result, WorkerFailed):
+                raise result.error
+            if isinstance(result, Exception):
+                raise result
+
+    async def _update_cache_after_messages(self) -> None:
+        """Wait for pending table messages, then update the cache."""
+        update_cache = getattr(self.app, "_update_cache", None)
+        if update_cache is None:
+            return
+
+        loop = asyncio.get_running_loop()
+        updated = loop.create_future()
+
+        def update() -> None:
+            try:
+                update_cache()
+            except Exception as error:  # noqa: BLE001
+                updated.set_exception(error)
+            else:
+                updated.set_result(None)
+
+        if self.table.call_later(update):
+            await updated
 
     # --------------------------------------------------
     # Additional methods/properties.
@@ -341,7 +398,8 @@ def row_action(method: Callable[[_ActionColumnT, Row[Any]], None]) -> Callable[[
     `action_open` method.
 
     The decorated method receives each selected row, or the current row when no rows are selected. Devboard runs each
-    call in a background worker unless the column sets `THREADED` to false.
+    call in a background worker unless the column sets `THREADED` to false. When caching is enabled, Devboard updates
+    the cache once after the whole operation, including no-ops and failed calls.
     """
 
     @wraps(method)

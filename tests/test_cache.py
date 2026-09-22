@@ -26,8 +26,9 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock
 
 import pytest
+from textual.worker import WorkerFailed
 
-from devboard import Board, Column, Devboard, Project
+from devboard import Board, Column, Devboard, Project, Row, row_action
 from devboard._internal import cache
 
 if TYPE_CHECKING:
@@ -79,6 +80,40 @@ class WrappedCacheColumn(CacheColumn):
             self.restored.append(text)
             return text
         return value
+
+
+class RowOperationColumn(Column[str]):
+    """A column with row actions that exercise cache updates."""
+
+    TITLE = "Operations"
+    HEADERS = ("Value",)
+
+    def __init__(self, values: list[str]) -> None:
+        """Initialize the column with the values displayed as rows."""
+        super().__init__()
+        self.values = values
+
+    def list_items(self) -> Iterator[str]:
+        """Return the values displayed by the column."""
+        yield from self.values
+
+    def populate_rows(self, value: str) -> list[tuple[str]]:
+        """Display one row for each value."""
+        return [(value,)]
+
+    @row_action
+    def action_remove(self, row: Row[str]) -> None:
+        """Remove a row from the board."""
+        row.remove()
+
+    @row_action
+    def action_nothing(self, row: Row[str]) -> None:
+        """Leave a row unchanged."""
+
+    @row_action
+    def action_fail(self, row: Row[str]) -> None:
+        """Fail while operating on a row."""
+        raise RuntimeError(row.item)
 
 
 def _cache_board(columns: Sequence[CacheColumn]) -> Board:
@@ -178,6 +213,107 @@ def test_disabled_background_tasks_leave_cache_untouched(cached_board: Path) -> 
 
             assert app.query_one(Column).table.current_row.data[1] == "refreshed"
             assert cache._load("test-board") == {"0": [], "1": []}
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("threaded", [True, False], ids=["threaded", "foreground"])
+def test_batched_row_action_updates_cache_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    threaded: bool,
+) -> None:
+    """One cache update records all changes made by a multi-row action."""
+    column = RowOperationColumn(["first", "second"])
+    column.THREADED = threaded
+    monkeypatch.setattr(cache, "_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board")
+        async with app.run_test():
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            # Select both rows so one invocation operates on the whole batch.
+            for row in column.table.selectable_rows:
+                row.select()
+            save = Mock(wraps=cache._save)
+            monkeypatch.setattr(cache, "_save", save)
+
+            column.action_remove()
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert save.call_count == 1
+            assert cache._load("test-board") == {"0": []}
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("values", [["unchanged"], []])
+@pytest.mark.parametrize("threaded", [True, False], ids=["threaded", "foreground"])
+def test_row_action_updates_cache_when_nothing_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    values: list[str],
+    threaded: bool,
+) -> None:
+    """A no-op updates the cache with or without a current row."""
+    column = RowOperationColumn(values)
+    column.THREADED = threaded
+    monkeypatch.setattr(cache, "_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board")
+        async with app.run_test():
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            stale_rows = [] if values else [cache._CachedRow(item_key="stale", item="stale", cells=("stale",))]
+            cache._save("test-board", {"0": stale_rows}, schema=app._cache_schema())
+            save = Mock(wraps=cache._save)
+            monkeypatch.setattr(cache, "_save", save)
+
+            column.action_nothing()
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert save.call_count == 1
+            cached = cache._load("test-board")
+            assert cached is not None
+            assert [row["item"] for row in cached["0"]] == values
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("threaded", [True, False], ids=["threaded", "foreground"])
+def test_failed_row_action_updates_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    threaded: bool,
+) -> None:
+    """A failed action updates the cache before Textual handles its error."""
+    column = RowOperationColumn(["failure"])
+    column.THREADED = threaded
+    monkeypatch.setattr(cache, "_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board")
+        errors: list[Exception] = []
+        monkeypatch.setattr(app, "_handle_exception", errors.append)
+        async with app.run_test():
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            cache._save("test-board", {"0": []}, schema=app._cache_schema())
+            save = Mock(wraps=cache._save)
+            monkeypatch.setattr(cache, "_save", save)
+
+            column.action_fail()
+            with pytest.raises(WorkerFailed):
+                await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert save.call_count == 1
+            assert len(errors) == 1
+            cached = cache._load("test-board")
+            assert cached is not None
+            assert cached["0"][0]["item"] == "failure"
 
     asyncio.run(run_test())
 
