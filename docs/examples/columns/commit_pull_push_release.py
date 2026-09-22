@@ -40,6 +40,8 @@ class ToRelease(ToRelease):
 board = ProjectsBoard(
     [ToCommit, ToPull, ToPush, ToRelease],
     bindings=[
+        ("question_mark", "show_help", "Help"),
+        ("ctrl+q, q, escape", "exit", "Exit"),
         ("ctrl+r", "refresh", "Refresh"),
         ("ctrl+shift+r", "force_refresh", "Force refresh"),
     ],

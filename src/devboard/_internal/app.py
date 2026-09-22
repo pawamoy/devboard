@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from rich.markdown import Markdown
 from rich.text import Text
@@ -67,17 +67,11 @@ class _Progress(Message):
         self.description = description
 
 
-class Devboard(App, ModalMixin):
+class Devboard(App, ModalMixin, inherit_bindings=False):
     """The Devboard application."""
 
     CSS_PATH = Path(__file__).parent / "devboard.tcss"
     """Path to the CSS file."""
-
-    BINDINGS: ClassVar = [
-        Binding("question_mark", "show_help", "Help"),
-        Binding("ctrl+q, q, escape", "exit", "Exit", key_display="Q"),
-    ]
-    """Application key bindings."""
 
     # --------------------------------------------------
     # Textual methods.
@@ -150,7 +144,6 @@ class Devboard(App, ModalMixin):
     def action_show_help(self) -> None:
         """Show help."""
         lines = ["# Main keys\n\n"]
-        lines.extend(self._bindings_help(Devboard))
         lines.extend(self._binding_specs_help(self.board.bindings))
         lines.extend(self._bindings_help(DataTable, search_up=True))
         lines.extend(self._bindings_help(Column))
