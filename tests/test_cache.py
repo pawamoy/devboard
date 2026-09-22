@@ -182,9 +182,22 @@ def test_disabled_background_tasks_leave_cache_untouched(cached_board: Path) -> 
     asyncio.run(run_test())
 
 
-@pytest.mark.parametrize("change", ["unchanged", "reorder", "headers", "title", "type", "version", "rows"])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "unchanged",
+        "columns_reordered",
+        "header_removed",
+        "header_added",
+        "headers_reordered",
+        "title",
+        "type",
+        "version",
+        "rows",
+    ],
+)
 def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.MonkeyPatch, change: str) -> None:
-    """Reuse compatible snapshots and invalidate them when columns change."""
+    """Reuse compatible snapshots and invalidate them when the table layout changes."""
 
     def make_columns() -> list[CacheColumn]:
         columns = [CacheColumn(cached_board / name) for name in ("first", "second")]
@@ -206,10 +219,14 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
             file.write_text(json.dumps(payload), encoding="utf-8")
 
         columns = make_columns()
-        if change == "reorder":
+        if change == "columns_reordered":
             columns.reverse()
-        elif change == "headers":
+        elif change == "header_removed":
             columns[0].HEADERS = ("Project", "Value")
+        elif change == "header_added":
+            columns[0].HEADERS = ("Project", "Value", "Extra", "More")
+        elif change == "headers_reordered":
+            columns[0].HEADERS = ("Extra", "Project", "Value")
         elif change == "title":
             columns[0].TITLE = "Renamed"
         elif change == "type":
@@ -229,6 +246,7 @@ def test_cache_matches_board_layout(cached_board: Path, monkeypatch: pytest.Monk
             assert show_cached.call_count == (1 if change == "unchanged" else 0)
             for column in columns:
                 assert column.table.current_row.data[1] == column.project.path.name
+            assert cache._load("test-board", schema=app._cache_schema()) is not None
 
     asyncio.run(run_test())
 
