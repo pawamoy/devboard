@@ -22,28 +22,32 @@ import os
 from collections.abc import Hashable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from rich.markdown import Markdown
-from rich.text import Text
 from textual import on
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Vertical
+from textual.app import App, ComposeResult, SystemCommand
+from textual.binding import Binding, BindingsMap
+from textual.containers import Horizontal
+from textual.keys import format_key
 from textual.message import Message
-from textual.widgets import Footer, Static
+from textual.widgets import Footer, HelpPanel, Static
 from textual.widgets.data_table import CellDoesNotExist
 from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from devboard._internal import cache
 from devboard._internal.board import Board, Column, DataTable
+from devboard._internal.keys import _REFRESH_COMMANDS, _KeysPanel
 from devboard._internal.loader import _load_board as _load_board_definition
 from devboard._internal.modal import Modal, ModalMixin
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
+
+    from textual.screen import Screen
 
 _ItemIdentity = Hashable
 _ItemRows = tuple[Any, list[tuple[Any, ...]]]
@@ -70,6 +74,12 @@ class _Progress(Message):
 
 class Devboard(App, ModalMixin, inherit_bindings=False):
     """The Devboard application."""
+
+    BINDINGS: ClassVar = [
+        Binding("ctrl+k", "toggle_help_panel", "Keys"),
+        Binding("ctrl+p", "command_palette", "Palette", show=False, priority=True, tooltip="Open the command palette"),
+    ]
+    """Application shortcuts available on every board."""
 
     CSS_PATH = Path(__file__).parent / "devboard.tcss"
     """Path to the CSS file."""
@@ -113,9 +123,15 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
                 yield column
             else:
                 yield column()
-        with Vertical(id="status-bar"):
+        with Horizontal(id="status-bar"):
             yield self._progress
             yield Footer()
+
+    def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
+        """Add board, column, and item refreshes to the command palette."""
+        yield from super().get_system_commands(screen)
+        for action, (title, description) in _REFRESH_COMMANDS.items():
+            yield SystemCommand(title, description, getattr(self, f"action_{action}"))
 
     def on_mount(self) -> None:
         """Populate columns when the application starts."""
@@ -144,14 +160,32 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
     # --------------------------------------------------
     def action_show_help(self) -> None:
         """Show help."""
-        lines = ["# Main keys\n\n"]
+        lines = ["## Main keys\n\n"]
         lines.extend(self._binding_specs_help(self.board.bindings))
+        lines.extend(self._bindings_help(Devboard))
+        lines.append("\n\n## Selection\n\n")
         lines.extend(self._bindings_help(DataTable, search_up=True))
+        lines.append("\n\n## Columns\n\n")
         lines.extend(self._bindings_help(Column))
+        common_column_bindings = list(Binding.make_bindings(Column.BINDINGS))
+        lines.append("\n\n## Current board\n\n")
         for column in self.query(Column):
-            lines.append(f"\n\n# {column.__class__.TITLE}\n\n")
-            lines.extend(self._bindings_help(column.__class__))
+            lines.append(f"\n\n### {column.__class__.TITLE}\n\n")
+            bindings = (binding for _, binding in column._bindings if binding not in common_column_bindings)
+            lines.extend(self._binding_specs_help(bindings))
         self.push_screen(Modal(text=Markdown("\n".join(lines))))
+
+    def action_show_help_panel(self) -> None:
+        """Show widget help and grouped bindings for the focused column."""
+        if not self.screen.query(HelpPanel):
+            self.screen.mount(_KeysPanel())
+
+    def action_toggle_help_panel(self) -> None:
+        """Show or hide Textual's keys and widget help panel."""
+        if self.screen.query(HelpPanel):
+            self.action_hide_help_panel()
+        else:
+            self.action_show_help_panel()
 
     def action_refresh_board(self) -> None:
         """Refresh all columns."""
@@ -189,7 +223,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
     # --------------------------------------------------
     def _refresh_task_progress(self) -> None:
         description = next(reversed(self._progress_by_source.values()), "")
-        self._progress.update(Text(description, no_wrap=True, overflow="ellipsis"))
+        self._progress.update(description)
 
     def _focused_column(self) -> Column | None:
         """Find the column that contains the focused widget."""
@@ -398,7 +432,11 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
                         new_item, new_rows = replacement
                         column._extend_item(new_item, new_rows)
                         if new_rows:
-                            for key, was_selected in zip(list(table.rows)[-len(new_rows) :], selected_item_rows, strict=False):
+                            for key, was_selected in zip(
+                                list(table.rows)[-len(new_rows) :],
+                                selected_item_rows,
+                                strict=False,
+                            ):
                                 if was_selected:
                                     table.get_row(key)[0].check()
                         inserted = True
@@ -512,31 +550,25 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         return definition.board
 
     def _bind_board_actions(self) -> None:
-        """Install the application bindings declared by the board."""
-        for spec in self.board.bindings:
-            binding = spec if isinstance(spec, Binding) else Binding(*spec)
-            self.bind(
-                binding.key,
-                binding.action,
-                description=binding.description,
-                show=binding.show,
-                key_display=binding.key_display,
-            )
+        """Install board bindings with their options intact and hide them from the footer."""
+        bindings = (replace(binding, show=False) for binding in Binding.make_bindings(self.board.bindings))
+        self._bindings = BindingsMap.merge([self._bindings, BindingsMap(bindings)])
 
     @staticmethod
     def _bindings_help(cls: type, *, search_up: bool = False) -> Iterator[str]:  # noqa: PLW0211
         bindings = getattr(cls, "BINDINGS", []) if search_up else cls.__dict__.get("BINDINGS", [])
-        for binding in bindings:
-            if isinstance(binding, tuple):
-                binding = Binding(*binding)  # noqa: PLW2901
-            keys = "`, `".join(key.strip().upper().replace("+", "-") for key in binding.key.split(","))
-            yield f"- `{keys}`: {binding.description}"
+        yield from Devboard._binding_specs_help(bindings)
 
     @staticmethod
     def _binding_specs_help(bindings: Iterable[Binding | tuple[str, str] | tuple[str, str, str]]) -> Iterator[str]:
-        """Format board binding descriptions for the help screen."""
+        """Format binding descriptions for the help screen."""
         for binding in bindings:
             if isinstance(binding, tuple):
                 binding = Binding(*binding)  # noqa: PLW2901
-            keys = "`, `".join(key.strip().upper().replace("+", "-") for key in binding.key.split(","))
-            yield f"- `{keys}`: {binding.description}"
+            keys = []
+            for key_name in binding.key.split(","):
+                key = key_name.strip()
+                display = format_key(key) if len(key) == 1 else "-".join(format_key(part) for part in key.split("+"))
+                # Double backticks let Markdown display the backtick key itself.
+                keys.append(f"`` {display} ``")
+            yield f"- {', '.join(keys)}: {binding.description}"

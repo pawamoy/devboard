@@ -615,7 +615,13 @@ Devboard fetches and scans each project in one worker task. It does not wait for
 The board owns its application bindings. Press `?` for help or ++q++ to exit. Press ++ctrl+r++ for a normal refresh. Press ++ctrl+shift+r++ to fetch and then scan each project. You can change or omit these bindings in your board.
 
 
+The footer shows progress messages on the left and the focused column's custom actions, **Keys**, and **Palette** on the right. Press ++ctrl+k++ to show or hide the **Keys** panel. This panel lists the available bindings, including shortcuts hidden from the footer.
+
+The **Keys** panel separates **Main keys**, **Selection**, **Columns**, **Column actions**, and **Movement**. **Columns** contains collapse, maximize, and refresh shortcuts. **Column actions** contains the custom shortcuts for the focused column, including inherited bindings.
+
 You can bind `refresh_board` and `force_refresh_board` to scan all columns. Bind `refresh_column` and `force_refresh_column` to scan only the focused column. Bind `refresh_item` and `force_refresh_item` to scan the item under the cursor. An item refresh updates that item in each column that lists it. The forced actions call your board's `force_refresh_item()` hook.
+
+Press ++ctrl+p++ and search for **refresh** to run any refresh action without a keybinding. Choose **Refresh board**, **Refresh column**, or **Refresh item**. Each command also has a **Force refresh** version.
 
 Here is our final board with four columns:
 

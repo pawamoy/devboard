@@ -26,7 +26,9 @@ from threading import Event
 from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock
 
+import pytest
 from rich.text import Text
+from textual.command import Command, CommandInput, CommandList, CommandPalette
 from textual.widgets import Static
 
 from devboard import Board, Column, Devboard, Project, Row, row_action
@@ -35,8 +37,6 @@ from devboard._internal import cache
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from pathlib import Path
-
-    import pytest
 
 
 @dataclass
@@ -349,6 +349,78 @@ def test_refresh_item_removes_an_item_no_longer_listed(monkeypatch: pytest.Monke
             assert column.scanned == []
             assert [row.item.number for row in column.table.selectable_rows] == [2]
             assert column.table.current_row.item.number == 2
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize(("prefix", "preparation"), [("Refresh", "normal"), ("Force refresh", "forced")])
+@pytest.mark.parametrize(
+    ("scope", "expected_scans"),
+    [
+        ("board", ([1, 2, 3], [1, 2])),
+        ("column", ([], [1, 2])),
+        ("item", ([2], [2])),
+    ],
+)
+def test_palette_refreshes_the_board_column_or_item(
+    monkeypatch: pytest.MonkeyPatch,
+    prefix: str,
+    preparation: str,
+    scope: str,
+    expected_scans: tuple[list[int], list[int]],
+) -> None:
+    """Palette refreshes preserve the target and work without refresh bindings."""
+    issues = [Issue("repo", 1, "First"), Issue("repo", 2, "Second"), Issue("repo", 3, "Third")]
+    first = CountingIssuesColumn(issues)
+    second = CountingIssuesColumn(issues[:2])
+    board = RefreshingBoard([first, second], bindings=[])
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False, workers=1)
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            first.scanned.clear()
+            second.scanned.clear()
+            board.prepared.clear()
+
+            # The palette must retain the second column and its second item as the target.
+            app.set_focus(second.table)
+            second.table.move_cursor(row=1)
+
+            await pilot.press("ctrl+p")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            palette = app.screen
+            assert isinstance(palette, CommandPalette)
+
+            # Searching finds all six refresh actions, even with no board bindings.
+            palette.query_one(CommandInput).value = "refresh"
+            await pilot.pause()
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            command_list = palette.query_one(CommandList)
+            commands = [command_list.get_option_at_index(index) for index in range(command_list.option_count)]
+            titles = [str(command.hit.text) for command in commands if isinstance(command, Command)]
+
+            assert set(titles) == {
+                "Refresh board",
+                "Force refresh board",
+                "Refresh column",
+                "Force refresh column",
+                "Refresh item",
+                "Force refresh item",
+            }
+
+            # Running the command refreshes only its scope and uses the correct preparation hook.
+            command_list.highlighted = titles.index(f"{prefix} {scope}")
+            await pilot.press("enter")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert not isinstance(app.screen, CommandPalette)
+            assert first.scanned == expected_scans[0]
+            assert second.scanned == expected_scans[1]
+            refreshed_items = sorted(set(expected_scans[0] + expected_scans[1]))
+            assert board.prepared == [(preparation, number) for number in refreshed_items]
 
     asyncio.run(run_test())
 

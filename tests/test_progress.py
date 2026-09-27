@@ -143,9 +143,12 @@ def test_startup_force_refreshes_each_project_before_scanning(projects: list[Pro
                 await pilot.pause()
                 status = app.query_one("#task-progress", Static)
                 footer = app.query_one(Footer)
-                assert status.region.y == 18
+                assert status.region.y == 19
+                assert status.region.x == 0
+                assert status.region.right == footer.region.x
                 assert status.region.height == 1
                 assert footer.region.y == 19
+                assert footer.region.height == 1
                 assert app.query_one(Column).region.bottom <= status.region.y
 
                 # The first project starts scanning while the other fetches remain blocked.
@@ -245,16 +248,35 @@ def test_cancelled_tasks_clear_progress(projects: list[ProgressProject]) -> None
 
 
 def test_column_can_report_and_clear_progress(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A column can update and clear the status bar from the scan worker."""
+    """Worker progress shares the footer with shortcuts and adapts to its width."""
     column = ReportingColumn()
     monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
 
     async def run_test() -> None:
         app = Devboard(board="test-board", background_tasks=False)
-        async with app.run_test():
+        async with app.run_test(size=(40, 10)) as pilot:
             try:
                 assert await asyncio.to_thread(column.started.wait, 5)
                 await _wait_for_progress(app, "Fetching remote backlog")
+                await pilot.pause()
+
+                # A narrow terminal truncates progress before the shortcuts.
+                status = app.query_one("#task-progress", Static)
+                footer = app.query_one(Footer)
+
+                assert status.region.y == footer.region.y == 9
+                assert status.region.right == footer.region.x
+                assert footer.region.right == 40
+                assert "…" in status.render_line(0).text
+
+                # More space reveals the full message on the same footer row.
+                await pilot.resize_terminal(100, 20)
+                await pilot.pause()
+
+                assert "Fetching remote backlog" in status.render_line(0).text
+                assert status.region.y == footer.region.y == 19
+                assert status.region.right == footer.region.x
+                assert footer.region.right == 100
 
                 column.clear_progress.set()
                 assert await asyncio.to_thread(column.progress_cleared.wait, 5)

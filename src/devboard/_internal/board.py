@@ -99,8 +99,8 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     """A Devboard column."""
 
     BINDINGS: ClassVar = [
-        Binding("c", "toggle_collapse", "Collapse/expand column"),
-        Binding("m", "toggle_maximize", "Maximize/unmaximize column"),
+        Binding("c", "toggle_collapse", "Collapse/expand column", show=False),
+        Binding("m", "toggle_maximize", "Maximize/unmaximize column", show=False),
     ]
     """Column key bindings."""
     is_collapsed: Reactive[bool] = reactive(default=False, init=False, layout=True, toggle_class="-collapsed")
@@ -275,7 +275,7 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
             self.app.call_later(refresh_board, [self])
 
     def report_progress(self, description: str | None = None) -> None:
-        """Show progress in the status bar.
+        """Show progress on the left of the footer.
 
         Devboard automatically clears progress associated with a worker when that worker finishes or is cancelled.
 

@@ -172,9 +172,9 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
     BINDINGS: ClassVar = [
         Binding("space", "toggle_select_row", "Toggle select", show=False),
         Binding("ctrl+a, *", "toggle_select_all", "Toggle select all", show=False),
-        Binding("exclamation_mark", "reverse_select", "Reverse select", show=False),
-        Binding("shift+up", "toggle_select_up", "Expand select up", show=False),
-        Binding("shift+down", "toggle_select_down", "Expand select down", show=False),
+        Binding("exclamation_mark", "reverse_select", "Reverse selection", show=False),
+        Binding("shift+up", "toggle_select_up", "Expand selection up", show=False),
+        Binding("shift+down", "toggle_select_down", "Expand selection down", show=False),
     ]
     """Key bindings for selecting rows."""
 

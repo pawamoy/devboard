@@ -4,14 +4,29 @@ Screen {
 
 #status-bar {
     dock: bottom;
-    height: 2;
+    height: 1;
+    background: $footer-background;
 }
 
 #task-progress {
+    width: 1fr;
+    min-width: 0;
     height: 1;
     padding: 0 1;
-    background: $panel;
     color: $text-muted;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+Footer {
+    dock: none;
+    width: auto;
+    max-width: 100%;
+    align-horizontal: right;
+}
+
+Footer FooterKey.-command-palette {
+    border-left: none;
 }
 
 Modal {

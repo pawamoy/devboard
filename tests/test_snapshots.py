@@ -21,12 +21,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 
-from devboard import Column
-from tests.snapshot_app import SnapshotDevboard
+from devboard import Board, Column
+from tests.snapshot_app import ChangesColumn, SnapshotDevboard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -59,6 +59,13 @@ async def _prepare_collapsed_board(pilot: Pilot) -> None:
     await pilot.pause()
 
 
+async def _prepare_keys_panel(pilot: Pilot) -> None:
+    """Open the grouped keys beside the populated board."""
+    await _prepare_board(pilot)
+    await pilot.press("ctrl+k")
+    await pilot.pause()
+
+
 def test_populated_board_layout(snap_compare: Callable[..., bool]) -> None:
     """The populated two-column board keeps its visual structure."""
     assert snap_compare(SnapshotDevboard(), terminal_size=(100, 24), run_before=_prepare_board)
@@ -71,3 +78,18 @@ def test_collapsed_column_layout(snap_compare: Callable[..., bool]) -> None:
         terminal_size=(100, 24),
         run_before=_prepare_collapsed_board,
     )
+
+
+def test_keys_panel_layout(snap_compare: Callable[..., bool]) -> None:
+    """Group headings separate built-in controls and a custom column action."""
+
+    class EditableColumn(ChangesColumn):
+        BINDINGS: ClassVar = [("e", "edit", "Open in editor")]
+
+    class KeysDevboard(SnapshotDevboard):
+        def _load_board(self) -> Board:
+            board = super()._load_board()
+            board.columns = (EditableColumn(), *board.columns[1:])
+            return board
+
+    assert snap_compare(KeysDevboard(), terminal_size=(140, 45), run_before=_prepare_keys_panel)
