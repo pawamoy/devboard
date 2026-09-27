@@ -601,8 +601,8 @@ board = ProjectBoard(
     bindings=[
         ("question_mark", "show_help", "Help"),
         ("ctrl+q, q, escape", "exit", "Exit"),
-        ("ctrl+r", "refresh", "Refresh"),
-        ("ctrl+shift+r", "force_refresh", "Force refresh"),
+        ("ctrl+r", "refresh_board", "Refresh"),
+        ("ctrl+shift+r", "force_refresh_board", "Force refresh"),
     ],
     force_refresh_on_startup=True,
 )
@@ -613,6 +613,9 @@ A normal refresh lists and scans the projects again. It does not contact their r
 Devboard fetches and scans each project in one worker task. It does not wait for all fetches to finish before it starts scanning projects. The `force_refresh_on_startup` option applies this behavior during startup.
 
 The board owns its application bindings. Press `?` for help or ++q++ to exit. Press ++ctrl+r++ for a normal refresh. Press ++ctrl+shift+r++ to fetch and then scan each project. You can change or omit these bindings in your board.
+
+
+You can bind `refresh_board` and `force_refresh_board` to scan all columns. Bind `refresh_column` and `force_refresh_column` to scan only the focused column. Bind `refresh_item` and `force_refresh_item` to scan the item under the cursor. An item refresh updates that item in each column that lists it. The forced actions call your board's `force_refresh_item()` hook.
 
 Here is our final board with four columns:
 
@@ -676,7 +679,7 @@ board = Board(
     bindings=[
         ("question_mark", "show_help", "Help"),
         ("q", "exit", "Exit"),
-        ("ctrl+r", "refresh", "Refresh"),
+        ("ctrl+r", "refresh_board", "Refresh"),
     ],
 )
 ```

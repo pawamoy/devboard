@@ -116,8 +116,8 @@ def test_board_bindings_choose_normal_or_forced_refresh(tmp_path: Path, monkeypa
     board = FetchingBoard(
         [column],
         bindings=[
-            ("ctrl+r", "refresh", "Refresh"),
-            ("ctrl+shift+r", "force_refresh", "Force refresh"),
+            ("ctrl+r", "refresh_board", "Refresh"),
+            ("ctrl+shift+r", "force_refresh_board", "Force refresh"),
         ],
     )
     fetched: list[Path] = []

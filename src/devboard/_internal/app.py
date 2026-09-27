@@ -34,6 +34,7 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.message import Message
 from textual.widgets import Footer, Static
+from textual.widgets.data_table import CellDoesNotExist
 from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from devboard._internal import cache
@@ -152,13 +153,31 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
             lines.extend(self._bindings_help(column.__class__))
         self.push_screen(Modal(text=Markdown("\n".join(lines))))
 
-    def action_refresh(self) -> None:
+    def action_refresh_board(self) -> None:
         """Refresh all columns."""
         self.refresh_board()
 
-    def action_force_refresh(self) -> None:
+    def action_force_refresh_board(self) -> None:
         """Force-refresh all columns."""
         self.force_refresh_board()
+
+    def action_refresh_column(self) -> None:
+        """Refresh the focused column."""
+        if (column := self._focused_column()) is not None:
+            self.refresh_board([column])
+
+    def action_force_refresh_column(self) -> None:
+        """Force-refresh the focused column."""
+        if (column := self._focused_column()) is not None:
+            self.force_refresh_board([column])
+
+    def action_refresh_item(self) -> None:
+        """Refresh the item under the cursor in every column that lists it."""
+        self._scan_current_item(force=False)
+
+    def action_force_refresh_item(self) -> None:
+        """Force-refresh the item under the cursor in every column that lists it."""
+        self._scan_current_item(force=True)
 
     def action_exit(self) -> None:
         """Exit application."""
@@ -171,6 +190,26 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
     def _refresh_task_progress(self) -> None:
         description = next(reversed(self._progress_by_source.values()), "")
         self._progress.update(Text(description, no_wrap=True, overflow="ellipsis"))
+
+    def _focused_column(self) -> Column | None:
+        """Find the column that contains the focused widget."""
+        widget = self.focused
+        while widget is not None and not isinstance(widget, Column):
+            widget = widget.parent
+        return widget
+
+    def _scan_current_item(self, *, force: bool) -> None:
+        """Start a scan for the source item under the focused table cursor."""
+        column = self._focused_column()
+        if column is None or self._scanning:
+            return
+        try:
+            item = column.table.current_row.item
+        except (CellDoesNotExist, ValueError):
+            return
+        identity = column.item_key(item)
+        self._scanning = True
+        self.run_worker(partial(self._scan_one_item, identity, force=force), thread=True)
 
     def _report_progress(self, source: object, description: str | None) -> None:
         """Post a progress update from a column or its active worker."""
@@ -305,6 +344,78 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
                 cache._save(self._board_key, call(self._cache_data), schema=schema)
         finally:
             call(self._finish_scan)
+
+    def _scan_one_item(self, identity: _ItemIdentity, *, force: bool) -> None:
+        """Recompute one item and replace only its displayed rows."""
+        call = self.call_from_thread
+        worker = get_current_worker()
+        try:
+            columns = call(lambda: list(self.query(Column)))
+            canonical, columns_by_item, _, _ = self._collect_items(columns)
+            results: dict[Column, _ItemRows] = {}
+            if identity in canonical:
+                item = canonical[identity]
+                prepare_item = self.board.force_refresh_item if force else self.board.refresh_item
+                try:
+                    prepare_item(item)
+                except Exception as error:  # noqa: BLE001
+                    self.log.error(f"Could not prepare {item} for scanning: {error}")  # noqa: TRY400
+                for column in columns_by_item[identity]:
+                    if worker.is_cancelled:
+                        return
+                    try:
+                        rows = column.populate_rows(item)
+                    except Exception as error:  # noqa: BLE001
+                        self.log.error(f"Could not scan {item}: {error}")  # noqa: TRY400
+                        rows = []
+                    results[column] = (item, rows)
+            if not worker.is_cancelled:
+                call(self._replace_item_rows, identity, results)
+                if self._background_tasks:
+                    cache._save(self._board_key, call(self._cache_data), schema=call(self._cache_schema))
+        finally:
+            call(self._finish_scan)
+
+    def _replace_item_rows(self, identity: _ItemIdentity, results: dict[Column, _ItemRows]) -> None:
+        """Replace rows for one item while keeping other rows and their selections."""
+        for column in self.query(Column):
+            table = column.table
+            old_rows = [(row.item, tuple(row.data), row.selected) for row in table.selectable_rows]
+            if column not in results and all(column.item_key(item) != identity for item, _, _ in old_rows):
+                continue
+            cursor_row = table.cursor_row
+            try:
+                cursor_item = column.item_key(table.current_row.item)
+            except (CellDoesNotExist, ValueError):
+                cursor_item = None
+            replacement = results.get(column)
+            inserted = False
+            selected_item_rows = [selected for item, _, selected in old_rows if column.item_key(item) == identity]
+            column._reset()
+            for item, cells, selected in old_rows:
+                if column.item_key(item) == identity:
+                    if not inserted and replacement is not None:
+                        new_item, new_rows = replacement
+                        column._extend_item(new_item, new_rows)
+                        if new_rows:
+                            for key, was_selected in zip(list(table.rows)[-len(new_rows) :], selected_item_rows, strict=False):
+                                if was_selected:
+                                    table.get_row(key)[0].check()
+                        inserted = True
+                    continue
+                column._extend_item(item, [cells])
+                if selected:
+                    table.get_row(next(reversed(table.rows)))[0].check()
+            if replacement is not None and not inserted:
+                column._extend_item(*replacement)
+            column._finalize()
+            table.force_refresh()
+            if table.row_count:
+                matching_row = next(
+                    (row for row in table.selectable_rows if column.item_key(row.item) == cursor_item),
+                    None,
+                )
+                table.move_cursor(row=matching_row.index if matching_row else min(cursor_row, table.row_count - 1))
 
     def _finish_scan(self) -> None:
         """Mark the current scan as finished on the UI thread."""

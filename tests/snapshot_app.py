@@ -82,7 +82,7 @@ class SnapshotDevboard(Devboard):
             bindings=[
                 Binding("ctrl+q, q, escape", "exit", "Exit", key_display="Q"),
                 Binding("question_mark", "show_help", "Help"),
-                ("ctrl+r", "refresh", "Refresh"),
-                ("ctrl+shift+r", "force_refresh", "Force refresh"),
+                ("ctrl+r", "refresh_board", "Refresh"),
+                ("ctrl+shift+r", "force_refresh_board", "Force refresh"),
             ],
         )

@@ -118,7 +118,7 @@ class RowOperationColumn(Column[str]):
 
 def _cache_board(columns: Sequence[CacheColumn]) -> Board:
     """Create a cache test board with a normal refresh binding."""
-    return Board(columns, bindings=[("f5, ctrl+r", "refresh", "Refresh")])
+    return Board(columns, bindings=[("f5, ctrl+r", "refresh_board", "Refresh")])
 
 
 @pytest.fixture(name="cached_board")

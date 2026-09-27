@@ -121,6 +121,32 @@ class OrderedIssuesColumn(IssuesColumn):
         self.table.add_rows(rows)
 
 
+class CountingIssuesColumn(IssuesColumn):
+    """Record which issues Devboard scans."""
+
+    def __init__(self, issues: list[Issue]) -> None:  # noqa: D107
+        super().__init__(issues)
+        self.scanned: list[int] = []
+
+    def populate_rows(self, issue: Issue) -> list[tuple[Any, ...]]:  # noqa: D102
+        self.scanned.append(issue.number)
+        return super().populate_rows(issue)
+
+
+class RefreshingBoard(Board):
+    """Record normal and forced item preparation."""
+
+    def __init__(self, columns: list[Column], bindings: list[tuple[str, str, str]]) -> None:  # noqa: D107
+        super().__init__(columns, bindings=bindings)
+        self.prepared: list[tuple[str, int]] = []
+
+    def refresh_item(self, item: Issue, /) -> None:  # noqa: D102
+        self.prepared.append(("normal", item.number))
+
+    def force_refresh_item(self, item: Issue, /) -> None:  # noqa: D102
+        self.prepared.append(("forced", item.number))
+
+
 def test_issue_and_project_columns_share_typed_source_items(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -197,7 +223,7 @@ def test_refresh_lists_backlog_items_again(monkeypatch: pytest.MonkeyPatch) -> N
     """A normal board refresh discovers issues added by the provider."""
     issues = [Issue("org/repo", 1, "First")]
     column = IssuesColumn(issues)
-    board = Board([column], bindings=[("ctrl+r", "refresh", "Refresh")])
+    board = Board([column], bindings=[("ctrl+r", "refresh_board", "Refresh")])
     monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
 
     async def run_test() -> None:
@@ -210,6 +236,119 @@ def test_refresh_lists_backlog_items_again(monkeypatch: pytest.MonkeyPatch) -> N
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
 
             assert [row.item.number for row in column.table.selectable_rows] == [1, 2]
+
+    asyncio.run(run_test())
+
+
+def test_board_bindings_refresh_only_the_focused_column(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Column bindings scan only the focused column and choose the item hook."""
+    first = CountingIssuesColumn([Issue("repo", 1, "First")])
+    second = CountingIssuesColumn([Issue("repo", 2, "Second")])
+    board = RefreshingBoard(
+        [first, second],
+        bindings=[
+            ("f5", "refresh_column", "Refresh column"),
+            ("f6", "force_refresh_column", "Force refresh column"),
+        ],
+    )
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False)
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            first.scanned.clear()
+            second.scanned.clear()
+            board.prepared.clear()
+            app.set_focus(second.table)
+
+            await pilot.press("f5")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert first.scanned == []
+            assert second.scanned == [2]
+            assert board.prepared == [("normal", 2)]
+
+            await pilot.press("f6")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert first.scanned == []
+            assert second.scanned == [2, 2]
+            assert board.prepared == [("normal", 2), ("forced", 2)]
+
+    asyncio.run(run_test())
+
+
+def test_board_bindings_refresh_one_item_across_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An item binding updates shared rows and leaves other items as displayed."""
+    first_issue = Issue("repo", 1, "First")
+    second_issue = Issue("repo", 2, "Second")
+    first = CountingIssuesColumn([first_issue, second_issue])
+    second = CountingIssuesColumn([first_issue])
+    board = RefreshingBoard(
+        [first, second],
+        bindings=[
+            ("f7", "refresh_item", "Refresh item"),
+            ("f8", "force_refresh_item", "Force refresh item"),
+        ],
+    )
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False)
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            first.scanned.clear()
+            second.scanned.clear()
+            board.prepared.clear()
+            app.set_focus(first.table)
+            next(row for row in first.table.selectable_rows if row.item.number == 2).select()
+
+            first_issue.title = "Updated"
+            second_issue.title = "Not rescanned"
+            await pilot.press("f7")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert first.scanned == [1]
+            assert second.scanned == [1]
+            assert board.prepared == [("normal", 1)]
+            assert [row.data for row in first.table.selectable_rows] == [["Updated"], ["Second"]]
+            assert next(row for row in first.table.selectable_rows if row.item.number == 2).selected
+            assert [row.data for row in second.table.selectable_rows] == [["Updated"]]
+
+            first_issue.title = "Forced"
+            await pilot.press("f8")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert first.scanned == [1, 1]
+            assert second.scanned == [1, 1]
+            assert board.prepared == [("normal", 1), ("forced", 1)]
+            assert [row.data for row in first.table.selectable_rows] == [["Forced"], ["Second"]]
+
+    asyncio.run(run_test())
+
+
+def test_refresh_item_removes_an_item_no_longer_listed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refreshing a removed item deletes only its displayed rows."""
+    issues = [Issue("repo", 1, "First"), Issue("repo", 2, "Second")]
+    column = CountingIssuesColumn(issues)
+    board = RefreshingBoard([column], bindings=[("f7", "refresh_item", "Refresh item")])
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board", background_tasks=False)
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            column.scanned.clear()
+            app.set_focus(column.table)
+
+            issues.pop(0)
+            await pilot.press("f7")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert column.scanned == []
+            assert [row.item.number for row in column.table.selectable_rows] == [2]
+            assert column.table.current_row.item.number == 2
 
     asyncio.run(run_test())
 
