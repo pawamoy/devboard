@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [0.4.0](https://github.com/pawamoy/devboard/releases/tag/0.4.0) - 2026-09-28
+
+<small>[Compare with 0.3.0](https://github.com/pawamoy/devboard/compare/0.3.0...0.4.0)</small>
+
+### Features
+
+- Support refreshing items and columns ([43a0fd6](https://github.com/pawamoy/devboard/commit/43a0fd6a612fb78f9c1d15f15efef71b10def2dd) by Timothée Mazzucotelli).
+
+### Code Refactoring
+
+- Improve keybindings and help system ([554afb4](https://github.com/pawamoy/devboard/commit/554afb4fe247b8fa4fad02d99db416ad1aece6d5) by Timothée Mazzucotelli).
+
 ## [0.3.0](https://github.com/pawamoy/devboard/releases/tag/0.3.0) - 2026-09-23
 
 <small>[Compare with 0.2.0](https://github.com/pawamoy/devboard/compare/0.2.0...0.3.0)</small>
