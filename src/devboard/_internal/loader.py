@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
+import tomllib
 from dataclasses import dataclass
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -28,12 +29,6 @@ from typing import Any
 from appdirs import user_config_dir
 
 from devboard._internal.board import Board, Column
-
-# TODO: Remove once support for Python 3.10 is dropped.
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 @dataclass(frozen=True)
