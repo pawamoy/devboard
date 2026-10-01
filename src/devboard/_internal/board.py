@@ -112,7 +112,7 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     """Whether the column is collapsed."""
     is_cached: Reactive[bool] = reactive(default=False, init=False)
     """Whether the column displays cached data."""
-    _layout_before_maximize: list[tuple[Column, bool, bool]] | None = None
+    _layout_before_maximize: list[tuple[Column, bool]] | None = None
     TITLE: str = ""
     """The title of the column."""
     HEADERS: tuple[str, ...] = ()
@@ -148,8 +148,11 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
 
     def _watch_is_collapsed(self) -> None:
         """Update the column when its collapsed state changes."""
+        self.can_focus = self.is_collapsed
         self._refresh_presentation()
         if self.is_mounted:
+            if self.has_focus or self.table.has_focus:
+                self.screen.set_focus(self if self.is_collapsed else self.table)
             self.app.call_after_refresh(self._refresh_resized_tables)
 
     def _watch_is_cached(self) -> None:
@@ -167,18 +170,14 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     # --------------------------------------------------
     def action_toggle_collapse(self) -> None:
         """Collapse or expand the column."""
-        if self.is_collapsed:
-            self._expand()
-            self.screen.set_focus(self.table)
-        else:
-            self._collapse(focusable=True)
-            self.screen.set_focus(self)
+        self.is_collapsed = not self.is_collapsed
+        self.screen.set_focus(self if self.is_collapsed else self.table)
 
     def action_toggle_maximize(self) -> None:
         """Maximize the column or restore the layout from before it was maximized."""
         if self._layout_before_maximize is None:
             columns = list(self.screen.query(Column))
-            self._layout_before_maximize = [(column, column.is_collapsed, column.can_focus) for column in columns]
+            self._layout_before_maximize = [(column, column.is_collapsed) for column in columns]
             for column in columns:
                 if column is self:
                     column._expand()
@@ -189,9 +188,9 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
 
         layout = self._layout_before_maximize
         self._layout_before_maximize = None
-        for column, was_collapsed, was_focusable in layout:
+        for column, was_collapsed in layout:
             if was_collapsed:
-                column._collapse(focusable=was_focusable)
+                column._collapse()
             else:
                 column._expand()
         self.screen.set_focus(self if self.is_collapsed else self.table)
@@ -286,12 +285,9 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         cells. It also applies after refreshes. Call this method on the UI thread.
         """
         was_empty = not self.table.row_count
-        had_focus = self.has_focus or self.table.has_focus
         self.table.filter_rows((lambda row: predicate(cast("Row[_ItemT]", row))) if predicate is not None else None)
         if was_empty and self.table.row_count:
             self._expand()
-            if had_focus:
-                self.screen.set_focus(self.table)
         self._finalize()
 
     def report_progress(self, description: str | None = None) -> None:
@@ -316,12 +312,9 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
 
     def _reset(self) -> None:
         """Prepare the column for (re)population: restore styles, clear the table, show a loading indicator."""
-        restore_table_focus = self.has_focus
         self.is_cached = False
         self._expand()
         table = self.table
-        if restore_table_focus:
-            self.screen.set_focus(table)
         table.clear(columns=True)
         table.cursor_type = "row"
         for header in self.HEADERS:
@@ -345,16 +338,14 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         """Show that the column currently displays cached (possibly stale) data."""
         self.is_cached = True
 
-    def _collapse(self, *, focusable: bool = False) -> None:
-        """Hide the table and optionally keep the column focusable."""
+    def _collapse(self) -> None:
+        """Hide the table and keep the collapsed column focusable."""
         self.is_collapsed = True
-        self.can_focus = focusable
         self._refresh_presentation()
 
     def _expand(self) -> None:
         """Show the table at its normal width."""
         self.is_collapsed = False
-        self.can_focus = False
         self._refresh_presentation()
 
     def _refresh_presentation(self) -> None:
@@ -378,10 +369,7 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         table = self.table
         table.loading = False
         if not table.row_count:
-            had_focus = self.has_focus or table.has_focus
-            self._collapse(focusable=any(table.all_rows))
-            if had_focus and self.can_focus:
-                self.screen.set_focus(self)
+            self._collapse()
 
     # --------------------------------------------------
     # Methods to implement in subclasses.
