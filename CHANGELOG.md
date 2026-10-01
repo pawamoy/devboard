@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [0.5.0](https://github.com/pawamoy/devboard/releases/tag/0.5.0) - 2026-10-01
+
+<small>[Compare with 0.4.0](https://github.com/pawamoy/devboard/compare/0.4.0...0.5.0)</small>
+
+### Build
+
+- Drop support for Python 3.10 ([11896e7](https://github.com/pawamoy/devboard/commit/11896e7f6a57e87ab28ebcd3ff4a12ada561ccd2) by Timothée Mazzucotelli).
+
+### Features
+
+- Allow filtering columns/boards ([886fc32](https://github.com/pawamoy/devboard/commit/886fc32cf062562854accb8ac538f6b1f968f6e7) by Timothée Mazzucotelli).
+
+### Bug Fixes
+
+- Fix selected column title highlight ([c7b6975](https://github.com/pawamoy/devboard/commit/c7b69752f4793394c862f4b2d2723b23a5cd791f) by Timothée Mazzucotelli).
+
+### Code Refactoring
+
+- Update UI ([5198ddb](https://github.com/pawamoy/devboard/commit/5198ddb5aee8e03c99ab22fd3a9046f4a61181a8) by Timothée Mazzucotelli).
+- Keep collapsed column selectable ([1e6539c](https://github.com/pawamoy/devboard/commit/1e6539c8430a7b2b5355d17058191a9843c2080f) by Timothée Mazzucotelli).
+- Set default keybindings ([6656757](https://github.com/pawamoy/devboard/commit/66567572936c231977b32aeac9f37bfa1ff6212d) by Timothée Mazzucotelli).
+
 ## [0.4.0](https://github.com/pawamoy/devboard/releases/tag/0.4.0) - 2026-09-28
 
 <small>[Compare with 0.3.0](https://github.com/pawamoy/devboard/compare/0.3.0...0.4.0)</small>
