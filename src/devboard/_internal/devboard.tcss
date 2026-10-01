@@ -52,10 +52,6 @@ Column {
     text-style: bold underline;
 }
 
-Column:focus-within .column-title {
-    background: $accent;
-}
-
 DataTable {
     height: 1fr;
     width: 1fr;

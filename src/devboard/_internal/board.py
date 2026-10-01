@@ -23,7 +23,7 @@ from contextlib import suppress
 from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
-from textual import on
+from textual import events, on
 from textual.binding import Binding, BindingType
 from textual.containers import Container
 from textual.message import Message
@@ -135,6 +135,10 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     Column.-collapsed DataTable {
         display: none;
     }
+
+    Column .column-title.-focused {
+        background: $accent;
+    }
     """
     """Styles owned by the reusable column widget."""
 
@@ -145,6 +149,14 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         """Compose column widgets."""
         yield Static("▶ " + self.TITLE, classes="column-title")
         yield DataTable(id="table")
+
+    @on(events.Focus)
+    @on(events.Blur)
+    @on(events.DescendantFocus)
+    @on(events.DescendantBlur)
+    def _update_title_focus(self) -> None:
+        """Highlight the title when the column or one of its descendants has focus."""
+        self.query_one(".column-title", Static).set_class(self.has_focus_within, "-focused")
 
     def _watch_is_collapsed(self) -> None:
         """Update the column when its collapsed state changes."""

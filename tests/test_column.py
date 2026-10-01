@@ -25,9 +25,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 from textual.app import App
+from textual.color import Color
 from textual.widgets import Static
 
-from devboard import Column
+from devboard import Column, Devboard
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
@@ -67,6 +68,63 @@ class ColumnApp(App[None]):
         yield self.column
         yield self.other_column
         yield self.third_column
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_column_title_highlight_follows_focus_and_layout_changes(empty: bool) -> None:
+    """Title backgrounds follow keyboard and mouse focus without a window focus change."""
+    class HighlightApp(ColumnApp):
+        CSS_PATH = Devboard.CSS_PATH
+
+    async def run_test() -> None:
+        app = HighlightApp(EmptyColumn() if empty else None)
+        async with app.run_test() as pilot:
+            column = app.column
+            title = column.query_one(".column-title", Static)
+            other_title = app.other_column.query_one(".column-title", Static)
+            accent = Color.parse(app.get_css_variables()["accent"])
+            app.set_focus(column if column.is_collapsed else column.table)
+            await pilot.pause()
+
+            assert title.styles.background == accent
+            assert other_title.styles.background != accent
+
+            # Keyboard focus moves the highlight immediately to the next column.
+            await pilot.press("tab")
+            await pilot.pause()
+
+            assert title.styles.background != accent
+            assert other_title.styles.background == accent
+
+            await pilot.press("shift+tab", "c")
+            await pilot.pause()
+
+            assert title.styles.background == accent
+            assert other_title.styles.background != accent
+
+            # Collapsing preserves the highlight, and clicking another column transfers it.
+            if not column.is_collapsed:
+                await pilot.press("c")
+            await pilot.click(app.other_column.table)
+            await pilot.pause()
+
+            assert title.styles.background != accent
+            assert other_title.styles.background == accent
+
+            await pilot.click(title)
+            await pilot.press("m")
+            await pilot.pause()
+
+            assert title.styles.background == accent
+            assert other_title.styles.background != accent
+
+            await pilot.press("m")
+            await pilot.pause()
+
+            assert title.styles.background == accent
+            assert other_title.styles.background != accent
+
+    asyncio.run(run_test())
 
 
 def test_removing_last_row_collapses_and_keeps_column_focusable() -> None:
