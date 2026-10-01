@@ -71,8 +71,9 @@ class ColumnApp(App[None]):
 
 
 @pytest.mark.parametrize("empty", [False, True])
-def test_column_title_highlight_follows_focus_and_layout_changes(empty: bool) -> None:
-    """Title backgrounds follow keyboard and mouse focus without a window focus change."""
+def test_column_border_highlight_follows_focus_and_layout_changes(empty: bool) -> None:
+    """Column borders follow keyboard and mouse focus without a window focus change."""
+
     class HighlightApp(ColumnApp):
         CSS_PATH = Devboard.CSS_PATH
 
@@ -81,26 +82,25 @@ def test_column_title_highlight_follows_focus_and_layout_changes(empty: bool) ->
         async with app.run_test() as pilot:
             column = app.column
             title = column.query_one(".column-title", Static)
-            other_title = app.other_column.query_one(".column-title", Static)
             accent = Color.parse(app.get_css_variables()["accent"])
             app.set_focus(column if column.is_collapsed else column.table)
             await pilot.pause()
 
-            assert title.styles.background == accent
-            assert other_title.styles.background != accent
+            assert column.styles.border_top[1] == accent
+            assert app.other_column.styles.border_top[1] != accent
 
             # Keyboard focus moves the highlight immediately to the next column.
             await pilot.press("tab")
             await pilot.pause()
 
-            assert title.styles.background != accent
-            assert other_title.styles.background == accent
+            assert column.styles.border_top[1] != accent
+            assert app.other_column.styles.border_top[1] == accent
 
             await pilot.press("shift+tab", "c")
             await pilot.pause()
 
-            assert title.styles.background == accent
-            assert other_title.styles.background != accent
+            assert column.styles.border_top[1] == accent
+            assert app.other_column.styles.border_top[1] != accent
 
             # Collapsing preserves the highlight, and clicking another column transfers it.
             if not column.is_collapsed:
@@ -108,21 +108,77 @@ def test_column_title_highlight_follows_focus_and_layout_changes(empty: bool) ->
             await pilot.click(app.other_column.table)
             await pilot.pause()
 
-            assert title.styles.background != accent
-            assert other_title.styles.background == accent
+            assert column.styles.border_top[1] != accent
+            assert app.other_column.styles.border_top[1] == accent
 
             await pilot.click(title)
             await pilot.press("m")
             await pilot.pause()
 
-            assert title.styles.background == accent
-            assert other_title.styles.background != accent
+            assert column.styles.border_top[1] == accent
+            assert app.other_column.styles.border_top[1] != accent
 
             await pilot.press("m")
             await pilot.pause()
 
-            assert title.styles.background == accent
-            assert other_title.styles.background != accent
+            assert column.styles.border_top[1] == accent
+            assert app.other_column.styles.border_top[1] != accent
+
+    asyncio.run(run_test())
+
+
+def test_column_count_tracks_visible_rows_and_cache_state() -> None:
+    """Counts follow row changes without replacing titles or cache indicators."""
+
+    async def run_test() -> None:
+        app = ColumnApp()
+        async with app.run_test() as pilot:
+            column = app.column
+            count = column.query_one(".column-count", Static)
+            title = column.query_one(".column-title", Static)
+
+            assert str(count.content) == "1"
+
+            # Rows added directly to the table also update the header.
+            column.table.add_row("toolkit")
+            column._mark_cached()
+            await pilot.pause()
+
+            assert str(count.content) == "2"
+            assert "cached" in str(title.content)
+
+            column.filter_rows(lambda row: row.data[0] == "toolkit")
+            await pilot.pause()
+
+            assert str(count.content) == "1"
+
+            column.filter_rows(None)
+            await pilot.pause()
+
+            assert str(count.content) == "2"
+
+            # Collapse hides the count without losing it or the triangle direction.
+            await pilot.press("c")
+
+            assert str(title.content) == "▼ Results"
+            assert count.styles.display == "none"
+
+            await pilot.press("c")
+
+            assert str(count.content) == "2"
+            assert count.styles.display == "block"
+            assert "cached" in str(title.content)
+
+            column.table.current_row.remove()
+            await pilot.pause()
+
+            assert str(count.content) == "1"
+
+            column._reset()
+            await pilot.pause()
+
+            assert str(count.content) == "0"
+            assert str(title.content) == "▶ Results"
 
     asyncio.run(run_test())
 

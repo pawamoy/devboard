@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 from textual import events, on
 from textual.binding import Binding, BindingType
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 from textual.message import Message
 from textual.reactive import Reactive, reactive
 from textual.widgets import Static
@@ -47,6 +47,10 @@ _ItemT = TypeVar("_ItemT")
 
 class _TableEmptied(Message):
     """Report that a Devboard table lost its final row."""
+
+
+class _TableRowsChanged(Message):
+    """Report a change to the number of visible rows."""
 
 
 class Row(SelectableRow[_ItemT], Generic[_ItemT]):
@@ -73,11 +77,29 @@ class DataTable(SelectableRowsDataTable[_ItemT], Generic[_ItemT]):
     ROW = Row
     """The class to instantiate rows."""
 
+    def add_row(self, *cells: Any, height: int | None = 1, key: str | None = None, label: Any | None = None) -> RowKey:
+        """Add a row and update the column's row count."""
+        row_key = super().add_row(*cells, height=height, key=key, label=label)
+        self.post_message(_TableRowsChanged())
+        return row_key
+
+    def clear(self, columns: bool = True) -> DataTable[_ItemT]:  # noqa: FBT001,FBT002
+        """Clear the table and update the column's row count."""
+        super().clear(columns)
+        self.post_message(_TableRowsChanged())
+        return self
+
     def remove_row(self, row_key: RowKey | str) -> None:
         """Remove a row and report when the table becomes empty."""
         super().remove_row(row_key)
+        self.post_message(_TableRowsChanged())
         if not self.row_count:
             self.post_message(_TableEmptied())
+
+    def filter_rows(self, predicate: Callable[[SelectableRow[_ItemT]], bool] | None) -> None:
+        """Filter rows and update the column's visible row count."""
+        super().filter_rows(predicate)
+        self.post_message(_TableRowsChanged())
 
     @property
     def current_row(self) -> Row[_ItemT]:
@@ -124,20 +146,44 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     DEFAULT_CLASSES = "box"
     """Textual CSS classes."""
     DEFAULT_CSS = """
+    Column .column-header {
+        height: 1;
+    }
+
+    Column .column-title {
+        width: 1fr;
+        padding: 0 1;
+        text-wrap: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    Column .column-count {
+        width: auto;
+        padding: 0 1;
+        color: $text-muted;
+    }
+
     Column.-collapsed {
         width: 3;
     }
 
+    Column.-collapsed .column-header {
+        height: auto;
+    }
+
     Column.-collapsed .column-title {
+        padding: 0;
+        text-wrap: wrap;
+        text-overflow: fold;
         text-style: bold;
+    }
+
+    Column.-collapsed .column-count {
+        display: none;
     }
 
     Column.-collapsed DataTable {
         display: none;
-    }
-
-    Column .column-title.-focused {
-        background: $accent;
     }
     """
     """Styles owned by the reusable column widget."""
@@ -147,7 +193,9 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     # --------------------------------------------------
     def compose(self) -> ComposeResult:
         """Compose column widgets."""
-        yield Static("▶ " + self.TITLE, classes="column-title")
+        with Horizontal(classes="column-header"):
+            yield Static("▶ " + self.TITLE, classes="column-title")
+            yield Static("0", classes="column-count", markup=False)
         yield DataTable(id="table")
 
     @on(events.Focus)
@@ -155,8 +203,14 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     @on(events.DescendantFocus)
     @on(events.DescendantBlur)
     def _update_title_focus(self) -> None:
-        """Highlight the title when the column or one of its descendants has focus."""
-        self.query_one(".column-title", Static).set_class(self.has_focus_within, "-focused")
+        """Highlight the column when it or one of its descendants has focus."""
+        self.set_class(self.has_focus_within, "-focused")
+
+    @on(_TableRowsChanged)
+    def _on_table_rows_changed(self, event: _TableRowsChanged) -> None:
+        """Update the header after rows are added, removed, cleared, or filtered."""
+        event.stop()
+        self._refresh_presentation()
 
     def _watch_is_collapsed(self) -> None:
         """Update the column when its collapsed state changes."""
@@ -370,6 +424,7 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
             suffix = " [dim](cached)[/dim]" if self.is_cached else ""
             text = f"▶ {self.TITLE}{suffix}"
         self.query_one(".column-title", Static).update(text)
+        self.query_one(".column-count", Static).update(str(self.table.row_count))
 
     def _refresh_resized_tables(self) -> None:
         """Repaint table rows after a column changes the available width."""

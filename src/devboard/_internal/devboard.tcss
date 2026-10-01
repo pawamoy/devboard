@@ -44,12 +44,20 @@ Modal {
 Column {
     height: 1fr;
     background: $background;
-    border: solid $primary;
+    border: round $panel;
+}
+
+Column.-focused {
+    border: round $accent;
 }
 
 .column-title {
-    text-align: center;
-    text-style: bold underline;
+    color: $text-muted;
+}
+
+Column.-focused .column-title {
+    color: $text;
+    text-style: bold;
 }
 
 DataTable {
@@ -58,6 +66,13 @@ DataTable {
     scrollbar-size: 0 0;
 }
 
-.datatable--header {
-    background: $background;
+DataTable > .datatable--header {
+    background: $surface;
+    color: $text-muted;
+}
+
+DataTable:blur > .datatable--cursor {
+    background: transparent;
+    color: $text;
+    text-style: none;
 }

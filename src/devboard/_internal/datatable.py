@@ -202,7 +202,13 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
         """Add a row with a checkbox and associate its source item, if set."""
         if key is not None and RowKey(key) in self._hidden_rows:
             raise DuplicateKey(f"The row key {key!r} already exists.")
-        row_key = super().add_row(Checkbox(), *cells, height=height, key=key if key is not None else uuid4().hex, label=label)
+        row_key = super().add_row(
+            Checkbox(),
+            *cells,
+            height=height,
+            key=key if key is not None else uuid4().hex,
+            label=label,
+        )
         self._row_order.append(row_key)
         self._display_order.append(row_key)
         if self._associated_item is not _MISSING_ITEM:
@@ -250,7 +256,12 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
             return list(self._hidden_rows[key][0])
         return super().get_row(row_key)
 
-    def sort(self, *columns: Any, key: Callable[[Any], Any] | None = None, reverse: bool = False) -> SelectableRowsDataTable[_ItemT]:
+    def sort(
+        self,
+        *columns: Any,
+        key: Callable[[Any], Any] | None = None,
+        reverse: bool = False,
+    ) -> SelectableRowsDataTable[_ItemT]:
         """Sort all rows and retain the active filter."""
         column_indices = [self.get_column_index(column) for column in columns]
 
@@ -354,7 +365,11 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
 
     def _sort_visible_rows(self) -> None:
         """Apply the full row order to the rows currently displayed."""
-        positions = {id(self.get_row(row_key)[0]): index for index, row_key in enumerate(self._display_order) if row_key not in self._hidden_rows}
+        positions = {
+            id(self.get_row(row_key)[0]): index
+            for index, row_key in enumerate(self._display_order)
+            if row_key not in self._hidden_rows
+        }
         super().sort("checkbox", key=lambda checkbox: positions[id(checkbox)])
 
     def _hide_row(self, key: RowKey) -> None:

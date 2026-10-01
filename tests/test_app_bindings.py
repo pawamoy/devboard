@@ -65,6 +65,7 @@ def _render_keys_panel(panel: HelpPanel) -> str:
 @pytest.mark.parametrize("exit_key", ["q", "ctrl+q", "escape"])
 def test_default_help_and_exit_keys(exit_key: str) -> None:
     """Boards that omit bindings get help and all three exit aliases."""
+
     class DefaultBindingsDevboard(CustomBindingsDevboard):
         def _load_board(self) -> Board:
             """Use the default application bindings."""
@@ -126,6 +127,7 @@ def test_default_refresh_keys_choose_scope_and_item_hook(monkeypatch: pytest.Mon
 
 def test_empty_board_bindings_disable_defaults() -> None:
     """An explicit empty bindings list disables the board's default shortcuts."""
+
     class UnboundDevboard(CustomBindingsDevboard):
         def _load_board(self) -> Board:
             """Disable the default application bindings."""

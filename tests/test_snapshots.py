@@ -66,9 +66,22 @@ async def _prepare_keys_panel(pilot: Pilot) -> None:
     await pilot.pause()
 
 
+async def _prepare_selected_rows(pilot: Pilot) -> None:
+    """Select rows in both tables and return focus to the first column."""
+    await _prepare_board(pilot)
+    await pilot.press("space", "tab", "space", "shift+tab")
+    await pilot.hover("#task-progress")
+    await pilot.pause()
+
+
 def test_populated_board_layout(snap_compare: Callable[..., bool]) -> None:
     """The populated two-column board keeps its visual structure."""
     assert snap_compare(SnapshotDevboard(), terminal_size=(100, 24), run_before=_prepare_board)
+
+
+def test_selected_rows_in_inactive_column_layout(snap_compare: Callable[..., bool]) -> None:
+    """Checked rows remain visible when another column has the active cursor."""
+    assert snap_compare(SnapshotDevboard(), terminal_size=(100, 24), run_before=_prepare_selected_rows)
 
 
 def test_collapsed_column_layout(snap_compare: Callable[..., bool]) -> None:

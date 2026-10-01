@@ -112,6 +112,7 @@ def test_filter_text_targets_specific_or_all_columns(monkeypatch: pytest.MonkeyP
 
 def test_board_hook_filters_source_items_and_survives_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
     """A repository filter keeps matching new rows across normal and forced scans."""
+
     class BacklogBoard(Board):
         def matches_filter(self, row: Row[Issue], value: str, /) -> bool:
             """Select one repository without inspecting display cells."""
@@ -254,14 +255,21 @@ def test_filter_retains_explicit_keys_and_sorts_hidden_rows(monkeypatch: pytest.
             column.table.sort("title", reverse=True)
             column.filter_rows(None)
 
-            assert [column.table.get_row(row.key)[1:] for row in column.table.ordered_rows] == [["Gamma"], ["Beta"], ["Alpha"]]
+            assert [column.table.get_row(row.key)[1:] for row in column.table.ordered_rows] == [
+                ["Gamma"],
+                ["Beta"],
+                ["Alpha"],
+            ]
             assert column.table.get_row(first_key)[1:] == ["Beta"]
 
     asyncio.run(run_test())
 
 
 @pytest.mark.parametrize("board_filter_key", ["ctrl+p", "ctrl+f"])
-def test_filter_commands_and_default_binding_target_their_scopes(monkeypatch: pytest.MonkeyPatch, board_filter_key: str) -> None:
+def test_filter_commands_and_default_binding_target_their_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+    board_filter_key: str,
+) -> None:
     """The palette and default shortcut submit, clear, and cancel filters in their chosen scopes."""
     issues = [Issue("repo", 1, "Alpha"), Issue("repo", 2, "Beta")]
     first = IssuesColumn(issues)
