@@ -21,16 +21,17 @@ from __future__ import annotations
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
+from uuid import uuid4
 
 from textual import on
 from textual.binding import Binding
 from textual.coordinate import Coordinate
 from textual.message import Message
 from textual.widgets import DataTable
-from textual.widgets.data_table import CellDoesNotExist, RowDoesNotExist, RowKey
+from textual.widgets.data_table import CellDoesNotExist, DuplicateKey, RowDoesNotExist, RowKey
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from textual.app import App
 
@@ -182,6 +183,10 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
         """Initialize the table and its row-to-item associations."""
         self._row_items: dict[RowKey, _ItemT] = {}
         self._associated_item: _ItemT | object = _MISSING_ITEM
+        self._hidden_rows: dict[RowKey, tuple[list[Any], int | None, Any]] = {}
+        self._row_order: list[RowKey] = []
+        self._display_order: list[RowKey] = []
+        self._row_filter: Callable[[SelectableRow[_ItemT]], bool] | None = None
         super().__init__(*args, **kwargs)
 
     # --------------------------------------------------
@@ -195,9 +200,15 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
         label: Any | None = None,
     ) -> RowKey:
         """Add a row with a checkbox and associate its source item, if set."""
-        row_key = super().add_row(Checkbox(), *cells, height=height, key=key, label=label)
+        if key is not None and RowKey(key) in self._hidden_rows:
+            raise DuplicateKey(f"The row key {key!r} already exists.")
+        row_key = super().add_row(Checkbox(), *cells, height=height, key=key if key is not None else uuid4().hex, label=label)
+        self._row_order.append(row_key)
+        self._display_order.append(row_key)
         if self._associated_item is not _MISSING_ITEM:
             self._row_items[row_key] = cast("_ItemT", self._associated_item)
+        if self._row_filter is not None and not self._row_filter(self.ROW(table=self, key=row_key)):
+            self._hide_row(row_key)
         return row_key
 
     def add_rows(self, rows: Iterable[Iterable]) -> list[RowKey]:
@@ -214,6 +225,9 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
         """
         super().clear(columns)
         self._row_items.clear()
+        self._hidden_rows.clear()
+        self._row_order.clear()
+        self._display_order.clear()
         if columns:
             self.add_column("", key="checkbox")
         return self
@@ -221,8 +235,34 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
     def remove_row(self, row_key: RowKey | str) -> None:
         """Remove a row and its source-item association."""
         key = RowKey(row_key) if isinstance(row_key, str) else row_key
+        if key in self._hidden_rows:
+            del self._hidden_rows[key]
+        else:
+            super().remove_row(row_key)
         self._row_items.pop(key, None)
-        super().remove_row(row_key)
+        self._row_order.remove(key)
+        self._display_order.remove(key)
+
+    def get_row(self, row_key: RowKey | str) -> list[Any]:
+        """Return row cells, including cells retained while a row is hidden."""
+        key = RowKey(row_key) if isinstance(row_key, str) else row_key
+        if key in self._hidden_rows:
+            return list(self._hidden_rows[key][0])
+        return super().get_row(row_key)
+
+    def sort(self, *columns: Any, key: Callable[[Any], Any] | None = None, reverse: bool = False) -> SelectableRowsDataTable[_ItemT]:
+        """Sort all rows and retain the active filter."""
+        column_indices = [self.get_column_index(column) for column in columns]
+
+        def sort_key(row_key: RowKey) -> Any:
+            cells = self.get_row(row_key)
+            values = tuple(cells[index] for index in column_indices) if columns else tuple(cells)
+            value = values[0] if len(columns) == 1 else values
+            return key(value) if key is not None else value
+
+        self._display_order = sorted(self._row_order, key=sort_key, reverse=reverse)
+        self._sort_visible_rows()
+        return self
 
     # --------------------------------------------------
     # Message handlers.
@@ -290,6 +330,53 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
     # --------------------------------------------------
     # Additional methods/properties.
     # --------------------------------------------------
+    def filter_rows(self, predicate: Callable[[SelectableRow[_ItemT]], bool] | None) -> None:
+        """Show matching rows, or show every row when the predicate is `None`.
+
+        Each call replaces the previous filter. Hidden rows retain their keys,
+        cells, source items, and selections, but do not participate in row actions.
+        The filter also applies to rows added later.
+        """
+        visible = {row.key for row in self.all_rows if predicate is None or predicate(row)}
+        cursor_key = None
+        with suppress(CellDoesNotExist):
+            cursor_key = self.current_row.key
+        self._show_hidden_rows(visible)
+        self._row_filter = predicate
+        for row_key in self._row_order:
+            if row_key not in visible and row_key not in self._hidden_rows:
+                self._hide_row(row_key)
+        if self.row_count:
+            self._sort_visible_rows()
+            if cursor_key is not None and cursor_key in visible:
+                self.move_cursor(row=self.get_row_index(cursor_key))
+        self.force_refresh()
+
+    def _sort_visible_rows(self) -> None:
+        """Apply the full row order to the rows currently displayed."""
+        positions = {id(self.get_row(row_key)[0]): index for index, row_key in enumerate(self._display_order) if row_key not in self._hidden_rows}
+        super().sort("checkbox", key=lambda checkbox: positions[id(checkbox)])
+
+    def _hide_row(self, key: RowKey) -> None:
+        """Retain a row's data while removing it from the visible table."""
+        row = self.rows[key]
+        self._hidden_rows[key] = (self.get_row(key), None if row.auto_height else row.height, row.label)
+        super().remove_row(key)
+
+    def _show_hidden_rows(self, visible: set[RowKey]) -> None:
+        """Restore matching rows with their original keys and checkboxes."""
+        for key in self._row_order:
+            if key not in visible or key not in self._hidden_rows:
+                continue
+            cells, height, label = self._hidden_rows.pop(key)
+            super().add_row(*cells, key=key.value, height=height, label=label)
+
+    @property
+    def all_rows(self) -> Iterator[SelectableRow[_ItemT]]:
+        """All rows in insertion order, including hidden rows."""
+        for key in self._row_order:
+            yield self.ROW(table=self, key=key)
+
     @contextmanager
     def _associate_rows(self, item: _ItemT) -> Iterator[None]:
         """Associate rows added in this context with their source item."""
@@ -321,8 +408,9 @@ class SelectableRowsDataTable(DataTable, Generic[_ItemT]):
     @property
     def selectable_rows(self) -> Iterator[SelectableRow[_ItemT]]:
         """Rows, as selectable ones."""
-        for key in self.rows:
-            yield self.ROW(table=self, key=key)
+        for key in self._row_order:
+            if key not in self._hidden_rows:
+                yield self.ROW(table=self, key=key)
 
     @property
     def selected_rows(self) -> Iterator[SelectableRow[_ItemT]]:

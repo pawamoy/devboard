@@ -40,7 +40,8 @@ from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from devboard._internal import cache
 from devboard._internal.board import Board, Column, DataTable
-from devboard._internal.keys import _REFRESH_COMMANDS, _KeysPanel
+from devboard._internal.filtering import _FilterInput
+from devboard._internal.keys import _FILTER_COMMANDS, _REFRESH_COMMANDS, _KeysPanel
 from devboard._internal.loader import _load_board as _load_board_definition
 from devboard._internal.modal import Modal, ModalMixin
 
@@ -110,6 +111,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         self._scan_workers: int | None = workers
         self._scanning: bool = False
         self._progress_by_source: dict[object, str] = {}
+        self._filter_values: dict[Column, str] = {}
         self._progress = Static("", id="task-progress", markup=False)
         self.board: Board = self._load_board()
         """The loaded board definition."""
@@ -128,9 +130,9 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
             yield Footer()
 
     def get_system_commands(self, screen: Screen) -> Iterable[SystemCommand]:
-        """Add board, column, and item refreshes to the command palette."""
+        """Add refresh and filtering actions to the command palette."""
         yield from super().get_system_commands(screen)
-        for action, (title, description) in _REFRESH_COMMANDS.items():
+        for action, (title, description) in {**_REFRESH_COMMANDS, **_FILTER_COMMANDS}.items():
             yield SystemCommand(title, description, getattr(self, f"action_{action}"))
 
     def on_mount(self) -> None:
@@ -213,6 +215,15 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         """Force-refresh the item under the cursor in every column that lists it."""
         self._scan_current_item(force=True)
 
+    def action_filter_board(self) -> None:
+        """Prompt for a filter to apply to all columns."""
+        self._prompt_filter(list(self.query(Column)), "Filter board")
+
+    def action_filter_column(self) -> None:
+        """Prompt for a filter to apply to the focused column."""
+        if (column := self._focused_column()) is not None:
+            self._prompt_filter([column], "Filter column")
+
     def action_exit(self) -> None:
         """Exit application."""
         self.workers.cancel_all()
@@ -231,6 +242,17 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         while widget is not None and not isinstance(widget, Column):
             widget = widget.parent
         return widget
+
+    def _prompt_filter(self, columns: list[Column], title: str) -> None:
+        """Capture the target columns before opening a filter prompt."""
+        values = {self._filter_values.get(column, "") for column in columns}
+        current_value = values.pop() if len(values) == 1 else ""
+
+        def apply_filter(value: str | None) -> None:
+            if value is not None:
+                self.filter_rows(value, columns)
+
+        self.push_screen(_FilterInput(title, current_value), apply_filter)
 
     def _scan_current_item(self, *, force: bool) -> None:
         """Start a scan for the source item under the focused table cursor."""
@@ -259,8 +281,21 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         """Refresh columns after forcing their items to update external state."""
         self.scan(columns, force=True)
 
+    def filter_rows(self, value: str | None, columns: Iterable[Column] | None = None) -> None:
+        """Filter specific columns, or all columns when none are specified.
+
+        Use the board's `matches_filter()` hook to select rows. A nonempty value
+        replaces each target column's filter. `None` or an empty string clears it.
+        Filtering preserves hidden rows and does not scan items or write the cache.
+        Call this method on the UI thread.
+        """
+        predicate = (lambda row: self.board.matches_filter(row, value)) if value else None
+        for column in columns if columns is not None else self.query(Column):
+            column.filter_rows(predicate)
+            self._filter_values[column] = value or ""
+
     def _update_cache(self) -> None:
-        """Save the board currently displayed after a row operation."""
+        """Save all remaining board rows after a row operation."""
         if self._background_tasks:
             cache._save(self._board_key, self._cache_data(), schema=self._cache_schema())
 
@@ -414,7 +449,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         """Replace rows for one item while keeping other rows and their selections."""
         for column in self.query(Column):
             table = column.table
-            old_rows = [(row.item, tuple(row.data), row.selected) for row in table.selectable_rows]
+            old_rows = [(row.item, tuple(row.data), row.selected) for row in table.all_rows]
             if column not in results and all(column.item_key(item) != identity for item, _, _ in old_rows):
                 continue
             cursor_row = table.cursor_row
@@ -433,7 +468,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
                         column._extend_item(new_item, new_rows)
                         if new_rows:
                             for key, was_selected in zip(
-                                list(table.rows)[-len(new_rows) :],
+                                list(table._row_items)[-len(new_rows) :],
                                 selected_item_rows,
                                 strict=False,
                             ):
@@ -443,7 +478,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
                     continue
                 column._extend_item(item, [cells])
                 if selected:
-                    table.get_row(next(reversed(table.rows)))[0].check()
+                    table.get_row(next(reversed(table._row_items)))[0].check()
             if replacement is not None and not inserted:
                 column._extend_item(*replacement)
             column._finalize()
@@ -503,7 +538,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         ]
 
     def _cache_data(self) -> dict[str, list[cache._CachedRow]]:
-        """Snapshot all displayed columns, including those not recomputed by a partial scan."""
+        """Snapshot all columns and rows, including hidden rows and columns not rescanned."""
         return {
             str(index): [
                 cache._CachedRow(
@@ -511,7 +546,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
                     item=row.item,
                     cells=tuple(value if value is row.item else column.serialize_cell(value) for value in row.data),
                 )
-                for row in column.table.selectable_rows
+                for row in column.table.all_rows
             ]
             for index, column in enumerate(self.query(Column))
         }

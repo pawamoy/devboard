@@ -696,6 +696,46 @@ Pull requests can use the same `Issue` type and a separate `Column[Issue]`. For 
 
 This backlog board does not need an item refresh hook. Its `list_items()` method can request the current issues from the provider. Pressing ++ctrl+r++ runs `list_items()` again before Devboard scans the returned issues.
 
+## Filtering rows
+
+Press ++ctrl+f++ to filter every column. You can also press ++ctrl+p++ and choose **Filter board**. Choose **Filter column** to filter the focused column.
+Enter filter text and press ++enter++ to apply it. Submit empty text to clear the filter. Press ++escape++ to cancel.
+
+The default filter searches displayed cells and ignores case. Override [`Board.matches_filter()`][devboard.Board.matches_filter] to match source items instead.
+For example, this backlog board selects issues from one repository:
+
+```python
+class BacklogBoard(Board):
+    def matches_filter(self, row: Row[Issue], value: str, /) -> bool:
+        return row.item.repository == value
+
+
+board = BacklogBoard([ToTriage])
+```
+
+Enter `org/repository` in **Filter board** to show that repository's rows across the board.
+
+Use [`Devboard.filter_rows()`][devboard.Devboard.filter_rows] to apply filter text from an application action:
+
+```python
+app.filter_rows("org/repository")
+app.filter_rows("org/repository", columns=[column])
+app.filter_rows(None)
+```
+
+Use [`Column.filter_rows()`][devboard.Column.filter_rows] for a predicate that receives each row:
+
+```python
+column.filter_rows(lambda row: row.item.repository == "org/repository")
+column.filter_rows(None)
+```
+
+Each filter replaces the previous filter in its target columns. Filters also apply to new rows after normal, forced, or item refreshes.
+Hidden rows retain their source items and selections. Row actions use visible rows. Clearing a filter restores hidden rows, except rows removed by an action.
+The cache stores all remaining rows, including hidden rows. Filters apply during the current session and do not change the cached dataset.
+
+The actions `filter_board` and `filter_column` can also be used in your board's bindings.
+
 Now you can continue tinkering with your board,
 or delete your configuration file and re-run `devboard`
 to recreate the default configuration.

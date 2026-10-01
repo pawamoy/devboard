@@ -43,6 +43,11 @@ _REFRESH_COMMANDS = {
     "force_refresh_item": ("Force refresh item", "Update the item under the cursor before scanning it across columns"),
 }
 
+_FILTER_COMMANDS = {
+    "filter_board": ("Filter board", "Show matching rows in all columns; empty text clears the filter"),
+    "filter_column": ("Filter column", "Show matching rows in the focused column; empty text clears the filter"),
+}
+
 _MAIN_ACTIONS = {
     "toggle_help_panel",
     "show_help_panel",
@@ -56,6 +61,7 @@ _SELECTION_ACTIONS = {binding.action for binding in Binding.make_bindings(Select
 _COLUMN_ACTIONS = {
     *(binding.action for binding in Binding.make_bindings(Column.BINDINGS)),
     *_REFRESH_COMMANDS,
+    *_FILTER_COMMANDS,
 }
 
 

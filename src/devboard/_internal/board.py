@@ -94,6 +94,11 @@ class DataTable(SelectableRowsDataTable[_ItemT], Generic[_ItemT]):
         """Selected Devboard rows."""
         return cast("Iterator[Row[_ItemT]]", super().selected_rows)
 
+    @property
+    def all_rows(self) -> Iterator[Row[_ItemT]]:
+        """All Devboard rows, including rows hidden by a filter."""
+        return cast("Iterator[Row[_ItemT]]", super().all_rows)
+
 
 class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     """A Devboard column."""
@@ -274,6 +279,21 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
         if refresh_board is not None:
             self.app.call_later(refresh_board, [self])
 
+    def filter_rows(self, predicate: Callable[[Row[_ItemT]], bool] | None) -> None:
+        """Show matching rows, or clear this column's filter with `None`.
+
+        The predicate receives each row, including its source item and display
+        cells. It also applies after refreshes. Call this method on the UI thread.
+        """
+        was_empty = not self.table.row_count
+        had_focus = self.has_focus or self.table.has_focus
+        self.table.filter_rows((lambda row: predicate(cast("Row[_ItemT]", row))) if predicate is not None else None)
+        if was_empty and self.table.row_count:
+            self._expand()
+            if had_focus:
+                self.screen.set_focus(self.table)
+        self._finalize()
+
     def report_progress(self, description: str | None = None) -> None:
         """Show progress on the left of the footer.
 
@@ -354,11 +374,14 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
             table.force_refresh()
 
     def _finalize(self) -> None:
-        """Finish a population cycle, collapsing the column if it's empty."""
+        """Finish population and collapse columns with no visible rows."""
         table = self.table
         table.loading = False
         if not table.row_count:
-            self._collapse()
+            had_focus = self.has_focus or table.has_focus
+            self._collapse(focusable=any(table.all_rows))
+            if had_focus and self.can_focus:
+                self.screen.set_focus(self)
 
     # --------------------------------------------------
     # Methods to implement in subclasses.
@@ -439,3 +462,12 @@ class Board:
     def force_refresh_item(self, item: Any, /) -> None:
         """Prepare one item for a forced scan."""
         self.refresh_item(item)
+
+    def matches_filter(self, row: Row[Any], value: str, /) -> bool:
+        """Match filter text against displayed cells, ignoring case.
+
+        Override this method to match source items instead. For example, a
+        backlog board can compare `row.item.repository` with `value`.
+        An empty filter shows every row.
+        """
+        return not value or any(value.casefold() in str(cell).casefold() for cell in row.data)
