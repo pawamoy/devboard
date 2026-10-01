@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 from typing import ClassVar
 
+import pytest
 from rich.console import Console
 from rich.markdown import Markdown
 from textual.binding import Binding
@@ -33,6 +34,7 @@ from textual.widgets._footer import FooterKey
 from devboard import Board, Column, Devboard
 from devboard._internal.modal import Modal
 from tests.snapshot_app import ChangesColumn, SnapshotDevboard, UpdatesColumn
+from tests.test_items import CountingIssuesColumn, Issue
 
 
 class CustomBindingsDevboard(Devboard):
@@ -58,6 +60,86 @@ def _render_keys_panel(panel: HelpPanel) -> str:
     with console.capture() as capture:
         console.print(panel.query_one("BindingsTable", Static).render())
     return capture.get()
+
+
+@pytest.mark.parametrize("exit_key", ["q", "ctrl+q", "escape"])
+def test_default_help_and_exit_keys(exit_key: str) -> None:
+    """Boards that omit bindings get help and all three exit aliases."""
+    class DefaultBindingsDevboard(CustomBindingsDevboard):
+        def _load_board(self) -> Board:
+            """Use the default application bindings."""
+            return Board([])
+
+    async def run_test() -> None:
+        app = DefaultBindingsDevboard()
+        async with app.run_test() as pilot:
+            await pilot.press("question_mark")
+
+            assert isinstance(app.screen, Modal)
+
+            app.screen.dismiss()
+            await pilot.pause()
+            await pilot.press(exit_key)
+
+            assert app.exit_requested
+
+    asyncio.run(run_test())
+
+
+def test_default_refresh_keys_choose_scope_and_item_hook(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lowercase R, uppercase R, and control keys refresh their intended scopes."""
+    issues = [Issue("repo", 1, "First"), Issue("repo", 2, "Second")]
+    first = CountingIssuesColumn(issues)
+    second = CountingIssuesColumn([issues[0]])
+    board = Board([first, second])
+    prepared: list[tuple[str, int]] = []
+    monkeypatch.setattr(board, "refresh_item", lambda item: prepared.append(("normal", item.number)))
+    monkeypatch.setattr(board, "force_refresh_item", lambda item: prepared.append(("forced", item.number)))
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: board)
+
+    async def run_test() -> None:
+        app = Devboard(background_tasks=False, workers=1)
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            app.set_focus(first.table)
+
+            # The same item appears in both columns, while the second item appears only in the first.
+            for key, expected_first, expected_second, expected_prepared in (
+                ("r", [1], [1], [("normal", 1)]),
+                ("R", [1, 2], [], [("normal", 1), ("normal", 2)]),
+                ("ctrl+r", [1, 2], [1], [("normal", 1), ("normal", 2)]),
+                ("ctrl+shift+r", [1, 2], [1], [("forced", 1), ("forced", 2)]),
+            ):
+                first.scanned.clear()
+                second.scanned.clear()
+                prepared.clear()
+
+                await pilot.press(key)
+                await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+                assert first.scanned == expected_first
+                assert second.scanned == expected_second
+                assert prepared == expected_prepared
+
+    asyncio.run(run_test())
+
+
+def test_empty_board_bindings_disable_defaults() -> None:
+    """An explicit empty bindings list disables the board's default shortcuts."""
+    class UnboundDevboard(CustomBindingsDevboard):
+        def _load_board(self) -> Board:
+            """Disable the default application bindings."""
+            return Board([], bindings=[])
+
+    async def run_test() -> None:
+        app = UnboundDevboard()
+        async with app.run_test() as pilot:
+            await pilot.press("question_mark", "q", "ctrl+q", "escape")
+
+            assert not isinstance(app.screen, Modal)
+            assert not app.exit_requested
+
+    asyncio.run(run_test())
 
 
 def test_board_can_replace_help_and_exit_keys() -> None:

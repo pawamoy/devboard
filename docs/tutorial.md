@@ -598,12 +598,6 @@ class ProjectBoard(Board):
 
 board = ProjectBoard(
     [ToCommit, ToPull, ToPush, ToRelease],
-    bindings=[
-        ("question_mark", "show_help", "Help"),
-        ("ctrl+q, q, escape", "exit", "Exit"),
-        ("ctrl+r", "refresh_board", "Refresh"),
-        ("ctrl+shift+r", "force_refresh_board", "Force refresh"),
-    ],
     force_refresh_on_startup=True,
 )
 ```
@@ -612,7 +606,20 @@ A normal refresh lists and scans the projects again. It does not contact their r
 
 Devboard fetches and scans each project in one worker task. It does not wait for all fetches to finish before it starts scanning projects. The `force_refresh_on_startup` option applies this behavior during startup.
 
-The board owns its application bindings. Press `?` for help or ++q++ to exit. Press ++ctrl+r++ for a normal refresh. Press ++ctrl+shift+r++ to fetch and then scan each project. You can change or omit these bindings in your board.
+Boards use these default application bindings:
+
+| Key | Action |
+| --- | --- |
+| `?` | Show help |
+| ++q++, ++ctrl+q++, or ++escape++ | Exit |
+| ++r++ | Refresh the item under the cursor across columns |
+| ++shift+r++ (`R`) | Refresh the focused column |
+| ++ctrl+r++ | Refresh all columns |
+| ++ctrl+shift+r++ | Force-refresh all columns |
+| ++ctrl+f++ | Filter all columns |
+
+Pass `bindings` to [`Board`][devboard.Board] to replace these defaults. Pass `bindings=[]` to disable them.
+To add shortcuts to the defaults, use `bindings=[*Board.BINDINGS, ("f", "filter_board", "Filter board")]`.
 
 
 The footer shows progress messages on the left and the focused column's custom actions, **Keys**, and **Palette** on the right. Press ++ctrl+k++ to show or hide the **Keys** panel. This panel lists the available bindings, including shortcuts hidden from the footer.
@@ -680,14 +687,7 @@ class ToTriage(Column[Issue]):
         webbrowser.open(row.item.url)
 
 
-board = Board(
-    [ToTriage],
-    bindings=[
-        ("question_mark", "show_help", "Help"),
-        ("q", "exit", "Exit"),
-        ("ctrl+r", "refresh_board", "Refresh"),
-    ],
-)
+board = Board([ToTriage])
 ```
 
 `row.item` is the source `Issue`, even though the table only displays strings. The `item_key` method lets Devboard recognize the same issue when an API client creates new instances. It also lets the cache reconnect stored rows to the current issue objects. The key must be hashable, stable between scans, and unique across the board. Include a provider name when different providers can return the same repository and number.

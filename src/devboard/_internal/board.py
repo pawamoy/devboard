@@ -435,23 +435,35 @@ def row_action(method: Callable[[_ActionColumnT, Row[Any]], None]) -> Callable[[
 class Board:
     """A set of columns and the policies used to refresh their items."""
 
+    BINDINGS: ClassVar = [
+        Binding("question_mark", "show_help", "Help"),
+        Binding("q, ctrl+q, escape", "exit", "Exit"),
+        Binding("r", "refresh_item", "Refresh item", show=False),
+        Binding("R", "refresh_column", "Refresh column", show=False),
+        Binding("ctrl+r", "refresh_board", "Refresh board", show=False),
+        Binding("ctrl+shift+r", "force_refresh_board", "Force refresh board", show=False),
+        Binding("ctrl+f", "filter_board", "Filter board", show=False),
+    ]
+    """Default application bindings used when a board does not specify its own."""
+
     def __init__(
         self,
         columns: Iterable[Column | type[Column]],
         *,
-        bindings: Iterable[BindingType] = (),
+        bindings: Iterable[BindingType] | None = None,
         force_refresh_on_startup: bool = False,
     ) -> None:
         """Initialize the board.
 
         Parameters:
             columns: Column instances or classes displayed by the board.
-            bindings: Application bindings owned by the board.
+            bindings: Application bindings owned by the board. Omit this argument to use `BINDINGS`.
+                An explicit iterable replaces the defaults. An empty iterable disables them.
             force_refresh_on_startup: Whether startup uses the forced item hook.
         """
         self.columns: tuple[Column | type[Column], ...] = tuple(columns)
         """Column instances or classes displayed by the board."""
-        self.bindings: tuple[BindingType, ...] = tuple(bindings)
+        self.bindings: tuple[BindingType, ...] = tuple(self.BINDINGS if bindings is None else bindings)
         """Application bindings owned by the board."""
         self.force_refresh_on_startup: bool = force_refresh_on_startup
         """Whether startup uses the forced item hook."""

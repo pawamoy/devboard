@@ -232,11 +232,5 @@ class ProjectsBoard(Board):
 
 board = ProjectsBoard(
     [ToCommit, ToPull, ToPush, ToRelease],
-    bindings=[
-        ("question_mark", "show_help", "Help"),
-        ("ctrl+q, q, escape", "exit", "Exit"),
-        ("ctrl+r", "refresh_board", "Refresh"),
-        ("ctrl+shift+r", "force_refresh_board", "Force refresh"),
-    ],
     force_refresh_on_startup=True,
 )
