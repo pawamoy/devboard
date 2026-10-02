@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import os
+from collections import deque
 from collections.abc import Hashable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
@@ -39,7 +40,7 @@ from textual.widgets.data_table import CellDoesNotExist
 from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from devboard._internal import cache
-from devboard._internal.board import Board, Column, DataTable
+from devboard._internal.board import Board, Column, DataTable, _RefreshItem
 from devboard._internal.filtering import _FilterInput
 from devboard._internal.keys import _FILTER_COMMANDS, _REFRESH_COMMANDS, _KeysPanel
 from devboard._internal.loader import _load_board as _load_board_definition
@@ -110,6 +111,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         self._background_tasks: bool = background_tasks
         self._scan_workers: int | None = workers
         self._scanning: bool = False
+        self._pending_item_refreshes: deque[tuple[_ItemIdentity, list[Column], bool]] = deque()
         self._progress_by_source: dict[object, str] = {}
         self._filter_values: dict[Column, str] = {}
         self._progress = Static("", id="task-progress", markup=False)
@@ -150,6 +152,28 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
             # Keep the most recent update last, even when progress sources overlap.
             self._progress_by_source[source] = event.description
         self._refresh_task_progress()
+
+    @on(_RefreshItem)
+    def _on_refresh_item(self, event: _RefreshItem) -> None:
+        """Queue an action's item refresh on the UI thread."""
+        event.stop()
+        columns = [
+            column
+            for column in self.query(Column)
+            if event.columns is None
+            or any(column is target or (isinstance(target, type) and isinstance(column, target)) for target in event.columns)
+        ]
+        if columns:
+            self._pending_item_refreshes.append((event.source.item_key(event.item), columns, event.force))
+            self._start_next_item_refresh()
+
+    def _start_next_item_refresh(self) -> None:
+        """Start the next requested refresh when the scanner is available."""
+        if self._scanning or not self._pending_item_refreshes:
+            return
+        identity, columns, force = self._pending_item_refreshes.popleft()
+        self._scanning = True
+        self.run_worker(partial(self._scan_one_item, identity, columns=columns, force=force), thread=True)
 
     @on(Worker.StateChanged)
     def _on_task_worker_state_changed(self, event: Worker.StateChanged) -> None:
@@ -226,6 +250,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
 
     def action_exit(self) -> None:
         """Exit application."""
+        self._pending_item_refreshes.clear()
         self.workers.cancel_all()
         self.exit()
 
@@ -414,12 +439,13 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         finally:
             call(self._finish_scan)
 
-    def _scan_one_item(self, identity: _ItemIdentity, *, force: bool) -> None:
+    def _scan_one_item(self, identity: _ItemIdentity, *, force: bool, columns: list[Column] | None = None) -> None:
         """Recompute one item and replace only its displayed rows."""
         call = self.call_from_thread
         worker = get_current_worker()
         try:
-            columns = call(lambda: list(self.query(Column)))
+            if columns is None:
+                columns = call(lambda: list(self.query(Column)))
             canonical, columns_by_item, _, _ = self._collect_items(columns)
             results: dict[Column, _ItemRows] = {}
             if identity in canonical:
@@ -439,15 +465,15 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
                         rows = []
                     results[column] = (item, rows)
             if not worker.is_cancelled:
-                call(self._replace_item_rows, identity, results)
+                call(self._replace_item_rows, identity, results, columns)
                 if self._background_tasks:
                     cache._save(self._board_key, call(self._cache_data), schema=call(self._cache_schema))
         finally:
             call(self._finish_scan)
 
-    def _replace_item_rows(self, identity: _ItemIdentity, results: dict[Column, _ItemRows]) -> None:
+    def _replace_item_rows(self, identity: _ItemIdentity, results: dict[Column, _ItemRows], columns: Iterable[Column] | None = None) -> None:
         """Replace rows for one item while keeping other rows and their selections."""
-        for column in self.query(Column):
+        for column in columns if columns is not None else self.query(Column):
             table = column.table
             old_rows = [(row.item, tuple(row.data), row.selected) for row in table.all_rows]
             if column not in results and all(column.item_key(item) != identity for item, _, _ in old_rows):
@@ -493,6 +519,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
     def _finish_scan(self) -> None:
         """Mark the current scan as finished on the UI thread."""
         self._scanning = False
+        self._start_next_item_refresh()
 
     @property
     def _max_workers(self) -> int:

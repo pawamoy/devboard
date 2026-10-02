@@ -436,6 +436,25 @@ Use `row.data` to read it and `row.remove()` to remove it after success.
 Do not access `self.table` or other Textual widgets from a background action.
 Use `self.modal()` and the notification helpers to request UI changes safely.
 
+If an operation changes another column's data, call [`row.refresh()`][devboard.Row.refresh] after success.
+For example, a template update can create uncommitted changes:
+
+```python
+class ToUpdate(Column[Project]):
+    @row_action
+    def action_update(self, row: Row[Project]):
+        update_project(row.item)
+        row.remove()
+        row.refresh(columns=[ToCommit])
+```
+
+Devboard scans only that item in the specified columns, including columns where the item currently has no rows.
+Each target column must include the item in `list_items()` and identify it with the same `item_key()`.
+Pass column classes or instances. Omit `columns` to refresh the item across all columns.
+Requests wait for any active scan, and the refreshed rows are saved to the cache.
+Call `row.refresh()` after releasing any lock that the board's refresh hook needs.
+Use `force=True` to run the board's `force_refresh_item()` hook before scanning.
+
 To lock our project, we use [`project.locked()`][devboard.Project.locked].
 If it fails, the project was already locked, so we notify the user.
 The context manager always unlocks the project when the action ends, including after an error.

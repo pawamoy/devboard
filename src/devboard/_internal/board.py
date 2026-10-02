@@ -53,8 +53,31 @@ class _TableRowsChanged(Message):
     """Report a change to the number of visible rows."""
 
 
+class _RefreshItem(Message):
+    """Request an item refresh from a row action."""
+
+    def __init__(self, item: Any, source: Column, columns: tuple[Column | type[Column], ...] | None, *, force: bool) -> None:
+        super().__init__()
+        self.item = item
+        self.source = source
+        self.columns = columns
+        self.force = force
+
+
 class Row(SelectableRow[_ItemT], Generic[_ItemT]):
     """A Devboard row."""
+
+    def refresh(self, *, columns: Iterable[Column | type[Column]] | None = None, force: bool = False) -> None:
+        """Request a refresh of this row's item in the specified columns.
+
+        Pass column instances or classes. Omit `columns` to refresh every column
+        that lists the item. This method is safe in background actions and after
+        `remove()` on an action's row snapshot. Requests wait for any active scan.
+        Set `force=True` to use the board's forced item hook.
+        """
+        self.table.post_message(
+            _RefreshItem(self.item, cast("Column", self.table.parent), tuple(columns) if columns is not None else None, force=force),
+        )
 
     def _for_worker(self) -> Row[_ItemT]:
         """Copy this Devboard row for safe use in a background worker."""
