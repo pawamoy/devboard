@@ -149,8 +149,8 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     """A Devboard column."""
 
     BINDINGS: ClassVar = [
-        Binding("c", "toggle_collapse", "Collapse/expand column", show=False),
-        Binding("m", "toggle_maximize", "Maximize/unmaximize column", show=False),
+        Binding("ctrl+c", "toggle_collapse", "Collapse/expand column", show=False),
+        Binding("ctrl+m", "toggle_maximize", "Maximize/unmaximize column", show=False),
     ]
     """Column key bindings."""
     is_collapsed: Reactive[bool] = reactive(default=False, init=False, layout=True, toggle_class="-collapsed")

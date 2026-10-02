@@ -646,9 +646,9 @@ The footer shows progress messages on the left and the focused column's custom a
 The **Keys** panel separates **Main keys**, **Selection**, **Columns**, **Column actions**, and **Movement**. **Columns** contains collapse, maximize, and refresh shortcuts. **Column actions** contains the custom shortcuts for the focused column, including inherited bindings.
 
 Columns collapse automatically when they have no visible rows, including when a filter hides every row.
-Click a collapsed column or press ++tab++ to focus it. Press ++c++ to expand or collapse the focused column.
+Click a collapsed column or press ++tab++ to focus it. Press ++ctrl+c++ to expand or collapse the focused column.
 An expanded column's table remains focusable even when it is empty.
-Press ++m++ to maximize the focused column. Press ++m++ again to restore the previous layout.
+Press ++ctrl+m++ to maximize the focused column. Press ++ctrl+m++ again to restore the previous layout.
 Other columns remain focusable while collapsed by maximization.
 
 You can bind `refresh_board` and `force_refresh_board` to scan all columns. Bind `refresh_column` and `force_refresh_column` to scan only the focused column. Bind `refresh_item` and `force_refresh_item` to scan the item under the cursor. An item refresh updates that item in each column that lists it. The forced actions call your board's `force_refresh_item()` hook.

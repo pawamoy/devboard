@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import pytest
 from textual.app import App
@@ -96,7 +96,7 @@ def test_column_border_highlight_follows_focus_and_layout_changes(empty: bool) -
             assert column.styles.border_top[1] != accent
             assert app.other_column.styles.border_top[1] == accent
 
-            await pilot.press("shift+tab", "c")
+            await pilot.press("shift+tab", "ctrl+c")
             await pilot.pause()
 
             assert column.styles.border_top[1] == accent
@@ -104,7 +104,7 @@ def test_column_border_highlight_follows_focus_and_layout_changes(empty: bool) -
 
             # Collapsing preserves the highlight, and clicking another column transfers it.
             if not column.is_collapsed:
-                await pilot.press("c")
+                await pilot.press("ctrl+c")
             await pilot.click(app.other_column.table)
             await pilot.pause()
 
@@ -112,13 +112,13 @@ def test_column_border_highlight_follows_focus_and_layout_changes(empty: bool) -
             assert app.other_column.styles.border_top[1] == accent
 
             await pilot.click(title)
-            await pilot.press("m")
+            await pilot.press("ctrl+m")
             await pilot.pause()
 
             assert column.styles.border_top[1] == accent
             assert app.other_column.styles.border_top[1] != accent
 
-            await pilot.press("m")
+            await pilot.press("ctrl+m")
             await pilot.pause()
 
             assert column.styles.border_top[1] == accent
@@ -158,12 +158,12 @@ def test_column_count_tracks_visible_rows_and_cache_state() -> None:
             assert str(count.content) == "2"
 
             # Collapse hides the count without losing it or the triangle direction.
-            await pilot.press("c")
+            await pilot.press("ctrl+c")
 
             assert str(title.content) == "▼ Results"
             assert count.styles.display == "none"
 
-            await pilot.press("c")
+            await pilot.press("ctrl+c")
 
             assert str(count.content) == "2"
             assert count.styles.display == "block"
@@ -206,7 +206,7 @@ def test_removing_last_row_collapses_and_keeps_column_focusable() -> None:
 
             assert app.focused is app.other_column.table
 
-            await pilot.press("shift+tab", "c")
+            await pilot.press("shift+tab", "ctrl+c")
             await pilot.pause()
 
             assert not column.is_collapsed
@@ -250,7 +250,7 @@ def test_collapsed_columns_support_click_tab_expand_and_maximize(collapsed_state
             assert app.focused is column
 
             # Expansion focuses the table even when it has no visible rows.
-            await pilot.press("c")
+            await pilot.press("ctrl+c")
             await pilot.pause()
 
             assert not column.is_collapsed
@@ -259,7 +259,7 @@ def test_collapsed_columns_support_click_tab_expand_and_maximize(collapsed_state
             assert column.table.row_count == visible_rows
 
             # Maximizing a collapsed column leaves the other collapsed columns reachable.
-            await pilot.press("c", "m")
+            await pilot.press("ctrl+c", "ctrl+m")
             await pilot.pause()
 
             assert not column.is_collapsed
@@ -268,7 +268,7 @@ def test_collapsed_columns_support_click_tab_expand_and_maximize(collapsed_state
                 assert other.is_collapsed
                 assert other in app.screen.focus_chain
 
-            await pilot.press("m")
+            await pilot.press("ctrl+m")
             await pilot.pause()
 
             assert column.is_collapsed
@@ -278,8 +278,8 @@ def test_collapsed_columns_support_click_tab_expand_and_maximize(collapsed_state
     asyncio.run(run_test())
 
 
-def test_c_key_collapses_and_expands_focused_column() -> None:
-    """The C key toggles a populated column between its full and compact layouts."""
+def test_ctrl_c_key_collapses_and_expands_focused_column() -> None:
+    """Ctrl+C toggles a populated column between its full and compact layouts."""
 
     async def run_test() -> None:
         app = ColumnApp()
@@ -289,7 +289,7 @@ def test_c_key_collapses_and_expands_focused_column() -> None:
             assert column.table.row_count == 1
             assert column.table.styles.display == "block"
 
-            await pilot.press("c")
+            await pilot.press("ctrl+c")
             await pilot.pause()
 
             assert column.region.width == 3
@@ -307,7 +307,7 @@ def test_c_key_collapses_and_expands_focused_column() -> None:
 
             assert app.focused is column
 
-            await pilot.press("c")
+            await pilot.press("ctrl+c")
             await pilot.pause()
 
             assert column.region.width > 3
@@ -318,8 +318,36 @@ def test_c_key_collapses_and_expands_focused_column() -> None:
     asyncio.run(run_test())
 
 
-def test_m_key_maximizes_column_and_restores_previous_layout() -> None:
-    """The M key expands the focused column and restores every column when pressed again."""
+def test_plain_c_remains_available_for_column_actions() -> None:
+    """A custom C action does not conflict with Ctrl+C collapse."""
+
+    class CommitColumn(CollapsibleColumn):
+        BINDINGS: ClassVar = [("c", "commit", "Commit")]
+        commit_requested = False
+
+        def action_commit(self) -> None:
+            """Record that the column handled the plain C key."""
+            self.commit_requested = True
+
+    async def run_test() -> None:
+        column = CommitColumn()
+        app = ColumnApp(column)
+        async with app.run_test() as pilot:
+            await pilot.press("c")
+
+            assert column.commit_requested
+            assert not column.is_collapsed
+
+            await pilot.press("ctrl+c")
+
+            assert column.is_collapsed
+            assert app.is_running
+
+    asyncio.run(run_test())
+
+
+def test_ctrl_m_key_maximizes_column_and_restores_previous_layout() -> None:
+    """Ctrl+M expands the focused column and restores every column when pressed again."""
 
     async def run_test() -> None:
         app = ColumnApp()
@@ -327,7 +355,7 @@ def test_m_key_maximizes_column_and_restores_previous_layout() -> None:
             # Start with one user-collapsed column between two expanded columns.
             app.other_column._collapse()
 
-            await pilot.press("m")
+            await pilot.press("ctrl+m")
             await pilot.pause()
 
             # Maximizing keeps the current column open and collapses every other column.
@@ -336,7 +364,7 @@ def test_m_key_maximizes_column_and_restores_previous_layout() -> None:
             assert app.third_column.is_collapsed is True
             assert app.focused is app.column.table
 
-            await pilot.press("m")
+            await pilot.press("ctrl+m")
             await pilot.pause()
 
             # Unmaximizing restores the exact expanded and collapsed layout.
@@ -349,22 +377,22 @@ def test_m_key_maximizes_column_and_restores_previous_layout() -> None:
     asyncio.run(run_test())
 
 
-def test_m_key_restores_maximized_column_to_collapsed_state() -> None:
+def test_ctrl_m_key_restores_maximized_column_to_collapsed_state() -> None:
     """Unmaximizing re-collapses a column that was collapsed before maximizing."""
 
     async def run_test() -> None:
         app = ColumnApp()
         async with app.run_test() as pilot:
-            await pilot.press("c")
+            await pilot.press("ctrl+c")
             await pilot.pause()
 
-            await pilot.press("m")
+            await pilot.press("ctrl+m")
             await pilot.pause()
 
             assert app.column.is_collapsed is False
             assert app.focused is app.column.table
 
-            await pilot.press("m")
+            await pilot.press("ctrl+m")
             await pilot.pause()
 
             assert app.column.is_collapsed is True

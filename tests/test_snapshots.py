@@ -53,7 +53,7 @@ async def _prepare_board(pilot: Pilot) -> None:
 async def _prepare_collapsed_board(pilot: Pilot) -> None:
     """Prepare the board, collapse the first column, and settle the mouse."""
     await _prepare_board(pilot)
-    await pilot.press("c")
+    await pilot.press("ctrl+c")
     await pilot.pause()
     await pilot.hover("#task-progress")
     await pilot.pause()
