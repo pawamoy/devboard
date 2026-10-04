@@ -24,7 +24,7 @@ A development dashboard for projects, issues, pull requests, and other work.
 from __future__ import annotations
 
 from devboard._internal.app import Devboard
-from devboard._internal.board import Board, Column, DataTable, Row, row_action
+from devboard._internal.board import Board, Column, DataTable, Row, row_action, rows_action
 from devboard._internal.cli import get_parser, main
 from devboard._internal.datatable import (
     Checkbox,
@@ -52,4 +52,5 @@ __all__: list[str] = [
     "get_parser",
     "main",
     "row_action",
+    "rows_action",
 ]

@@ -28,7 +28,7 @@ from unittest.mock import Mock
 import pytest
 from textual.worker import WorkerFailed
 
-from devboard import Board, Column, Devboard, Project, Row, row_action
+from devboard import Board, Column, Devboard, Project, Row, row_action, rows_action
 from devboard._internal import cache
 
 if TYPE_CHECKING:
@@ -114,6 +114,83 @@ class RowOperationColumn(Column[str]):
     def action_fail(self, row: Row[str]) -> None:
         """Fail while operating on a row."""
         raise RuntimeError(row.item)
+
+
+class RowsOperationColumn(RowOperationColumn):
+    """Exercise cache updates after one callback processes a batch."""
+
+    operation = "remove"
+
+    def _operate_rows(self, rows: list[Row[str]]) -> None:
+        """Remove the first row, fail, or leave the batch unchanged."""
+        if self.operation == "nothing":
+            return
+        rows[0].remove()
+        if self.operation == "fail":
+            raise RuntimeError("Batch failed after removing a row")
+        for row in rows[1:]:
+            row.remove()
+
+    @rows_action
+    def action_batch(self, rows: list[Row[str]]) -> None:
+        """Apply a synchronous batch operation."""
+        self._operate_rows(rows)
+
+    @rows_action
+    async def action_async_batch(self, rows: list[Row[str]]) -> None:
+        """Apply an asynchronous batch operation."""
+        await asyncio.sleep(0)
+        self._operate_rows(rows)
+
+
+@pytest.mark.parametrize("execution", ["threaded", "foreground", "async"])
+@pytest.mark.parametrize("operation", ["remove", "nothing", "fail", "empty"])
+def test_rows_action_saves_cache_once_after_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    execution: str,
+    operation: str,
+) -> None:
+    """Completed, empty, and partially failed batches save their final table state once."""
+    values = [] if operation == "empty" else ["first", "second"]
+    column = RowsOperationColumn(values)
+    column.THREADED = execution == "threaded"
+    column.operation = operation
+    monkeypatch.setattr(cache, "_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(Devboard, "_load_board", lambda self: Board([column]))
+
+    async def run_test() -> None:
+        app = Devboard(board="test-board")
+        errors: list[Exception] = []
+        monkeypatch.setattr(app, "_handle_exception", errors.append)
+        async with app.run_test():
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            for row in column.table.selectable_rows:
+                row.select()
+
+            # Replace startup data so even a no-op must save the current table state.
+            cache._save("test-board", {"0": []}, schema=app._cache_schema())
+            save = Mock(wraps=cache._save)
+            monkeypatch.setattr(cache, "_save", save)
+
+            if execution == "async":
+                column.action_async_batch()
+            else:
+                column.action_batch()
+            if operation == "fail":
+                with pytest.raises(WorkerFailed):
+                    await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            else:
+                await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert save.call_count == 1
+            assert len(errors) == (operation == "fail")
+            cached = cache._load("test-board")
+            assert cached is not None
+            expected = {"remove": [], "nothing": values, "fail": ["second"], "empty": []}[operation]
+            assert [row["item"] for row in cached["0"]] == expected
+
+    asyncio.run(run_test())
 
 
 def _cache_board(columns: Sequence[CacheColumn]) -> Board:

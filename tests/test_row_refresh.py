@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from devboard import Board, Column, Devboard, Row, row_action
+from devboard import Board, Column, Devboard, Row, row_action, rows_action
 from devboard._internal import cache
 from tests.test_items import CountingIssuesColumn, Issue, RefreshingBoard
 
@@ -52,6 +52,16 @@ class UpdatingIssuesColumn(CountingIssuesColumn):
     @row_action
     def action_update(self, row: Row[Issue]) -> None:
         """Change an issue and refresh the columns affected by the change."""
+        self._update_issue(row)
+
+    @rows_action
+    def action_update_batch(self, rows: list[Row[Issue]]) -> None:
+        """Change all selected issues in one callback."""
+        for row in rows:
+            self._update_issue(row)
+
+    def _update_issue(self, row: Row[Issue]) -> None:
+        """Update an issue and request a refresh after removing its source row."""
         row.item.title = f"Updated {row.item.number}"
         row.remove()
         row.refresh(columns=self.targets, force=self.force)
@@ -59,11 +69,13 @@ class UpdatingIssuesColumn(CountingIssuesColumn):
 
 @pytest.mark.parametrize("threaded", [True, False], ids=["background", "foreground"])
 @pytest.mark.parametrize("scope", ["class", "instance", "all", "empty"])
+@pytest.mark.parametrize("batch", [True, False], ids=["rows_action", "row_action"])
 def test_action_refreshes_items_in_target_columns(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     threaded: bool,
     scope: str,
+    batch: bool,
 ) -> None:
     """Actions add missing target rows and preserve unrelated data and selections."""
     issues = [Issue("repo", 1, "First"), Issue("repo", 2, "Second"), Issue("repo", 3, "Updated existing")]
@@ -94,7 +106,10 @@ def test_action_refreshes_items_in_target_columns(
                 row.select()
 
             # Both selected items need refreshes, even though neither has a target row yet.
-            source.action_update()
+            if batch:
+                source.action_update_batch()
+            else:
+                source.action_update()
             await pilot.pause()
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
 
@@ -111,7 +126,11 @@ def test_action_refreshes_items_in_target_columns(
                 assert source.table.row_count == 0
                 assert source.scanned == []
                 assert untouched.scanned == []
-                assert [row.data for row in untouched.table.selectable_rows] == [["First"], ["Second"], ["Updated existing"]]
+                assert [row.data for row in untouched.table.selectable_rows] == [
+                    ["First"],
+                    ["Second"],
+                    ["Updated existing"],
+                ]
 
             cached = cache._load("row-refresh")
             assert cached is not None

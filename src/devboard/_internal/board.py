@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from functools import partial, wraps
+from inspect import iscoroutinefunction
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
 
 from textual import events, on
@@ -37,7 +38,7 @@ from devboard._internal.modal import ModalMixin
 from devboard._internal.notifications import NotifyMixin
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Hashable, Iterable, Iterator
+    from collections.abc import Awaitable, Callable, Hashable, Iterable, Iterator
 
     from textual.app import ComposeResult
     from textual.worker import Worker
@@ -56,7 +57,14 @@ class _TableRowsChanged(Message):
 class _RefreshItem(Message):
     """Request an item refresh from a row action."""
 
-    def __init__(self, item: Any, source: Column, columns: tuple[Column | type[Column], ...] | None, *, force: bool) -> None:
+    def __init__(
+        self,
+        item: Any,
+        source: Column,
+        columns: tuple[Column | type[Column], ...] | None,
+        *,
+        force: bool,
+    ) -> None:
         super().__init__()
         self.item = item
         self.source = source
@@ -76,7 +84,12 @@ class Row(SelectableRow[_ItemT], Generic[_ItemT]):
         Set `force=True` to use the board's forced item hook.
         """
         self.table.post_message(
-            _RefreshItem(self.item, cast("Column", self.table.parent), tuple(columns) if columns is not None else None, force=force),
+            _RefreshItem(
+                self.item,
+                cast("Column", self.table.parent),
+                tuple(columns) if columns is not None else None,
+                force=force,
+            ),
         )
 
     def _for_worker(self) -> Row[_ItemT]:
@@ -165,7 +178,7 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     CACHE_VERSION: int = 1
     """Version of the column's serialized cell format."""
     THREADED: bool = True
-    """Whether actions of this column should run in the background."""
+    """Whether synchronous row actions run in background threads."""
     DEFAULT_CLASSES = "box"
     """Textual CSS classes."""
     DEFAULT_CSS = """
@@ -284,35 +297,62 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
                 column._expand()
         self.screen.set_focus(self if self.is_collapsed else self.table)
 
-    def _apply_to_rows(self, action: Callable[[Row[_ItemT]], None]) -> None:
-        """Run an action for each selected row, or for the current row."""
+    def _action_rows(self) -> list[Row[_ItemT]]:
+        """Snapshot the selected visible rows, or the current row."""
         selected_rows = list(self.table.selected_rows)
         if not selected_rows:
             with suppress(CellDoesNotExist):
                 selected_rows.append(self.table.current_row)
-        action_rows = [row._for_worker() for row in selected_rows]
+        return [row._for_worker() for row in selected_rows]
+
+    def _apply_to_rows(self, action: Callable[[Row[_ItemT]], Awaitable[None] | None]) -> None:
+        """Run an action for each selected row, or for the current row."""
+        self._start_row_operation([partial(action, row) for row in self._action_rows()])
+
+    def _apply_to_row_batch(self, action: Callable[[list[Row[_ItemT]]], Awaitable[None] | None]) -> None:
+        """Run an action once with the selected rows, or the current row."""
+        rows = self._action_rows()
+        self._start_row_operation([partial(action, rows)] if rows else [])
+
+    def _start_row_operation(self, actions: list[Callable[[], Awaitable[None] | None]]) -> None:
+        """Dispatch row callbacks and save their changes after completion."""
         workers: list[Worker[Exception | None]] = []
         errors: tuple[Exception, ...] = ()
-        if self.THREADED:
-            workers = [self.run_worker(partial(self._run_row_action, action, row), thread=True) for row in action_rows]
-        else:
-            try:
-                for row in action_rows:
-                    action(row)
-            except Exception as error:  # noqa: BLE001
-                errors = (error,)
+        try:
+            for action in actions:
+                if iscoroutinefunction(action):
+                    workers.append(
+                        self.run_worker(self._run_async_row_action(cast("Callable[[], Awaitable[None]]", action))),
+                    )
+                elif self.THREADED:
+                    workers.append(
+                        self.run_worker(partial(self._run_row_action, cast("Callable[[], None]", action)), thread=True),
+                    )
+                else:
+                    action()
+        except Exception as error:  # noqa: BLE001
+            errors = (error,)
 
-        if not self.THREADED and getattr(self.app, "_update_cache", None) is None:
+        if not workers and not self.THREADED and getattr(self.app, "_update_cache", None) is None:
             if errors:
                 raise errors[0]
             return
         self.run_worker(self._finish_row_operation(workers, errors))
 
     @staticmethod
-    def _run_row_action(action: Callable[[Row[_ItemT]], None], row: Row[_ItemT]) -> Exception | None:
-        """Run one threaded row action and return any error to the batch coordinator."""
+    def _run_row_action(action: Callable[[], None]) -> Exception | None:
+        """Run a threaded callback and return any error to the operation coordinator."""
         try:
-            action(row)
+            action()
+        except Exception as error:  # noqa: BLE001
+            return error
+        return None
+
+    @staticmethod
+    async def _run_async_row_action(action: Callable[[], Awaitable[None]]) -> Exception | None:
+        """Await an async callback and return any error to the operation coordinator."""
+        try:
+            await action()
         except Exception as error:  # noqa: BLE001
             return error
         return None
@@ -492,20 +532,45 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
 _ActionColumnT = TypeVar("_ActionColumnT", bound=Column[Any])
 
 
-def row_action(method: Callable[[_ActionColumnT, Row[Any]], None]) -> Callable[[_ActionColumnT], None]:
+def row_action(
+    method: Callable[[_ActionColumnT, Row[Any]], Awaitable[None] | None],
+) -> Callable[[_ActionColumnT], None]:
     """Adapt a row callback into a Textual action.
 
     Decorate an `action_*` method and use the suffix as the binding action. For example, bind `open` to a decorated
     `action_open` method.
 
     The decorated method receives each selected row, or the current row when no rows are selected. Devboard runs each
-    call in a background worker unless the column sets `THREADED` to false. When caching is enabled, Devboard updates
-    the cache once after the whole operation, including no-ops and failed calls.
+    synchronous call in a background thread unless the column sets `THREADED` to false. Async methods run in async workers.
+    When caching is enabled, Devboard updates the cache once after the whole operation, including no-ops and failed calls.
     """
 
     @wraps(method)
     def action(column: _ActionColumnT) -> None:
         column._apply_to_rows(partial(method, column))
+
+    return action
+
+
+def rows_action(
+    method: Callable[[_ActionColumnT, list[Row[Any]]], Awaitable[None] | None],
+) -> Callable[[_ActionColumnT], None]:
+    """Adapt a batch callback into a Textual action.
+
+    Decorate an `action_*` method and use its suffix in a binding. The method receives one list of selected visible rows,
+    or a list containing the current row when none are selected. Empty tables do not call the method.
+
+    Rows are stable snapshots, with the same `data`, `item`, `remove()`, and `refresh()` API as `row_action` callbacks.
+    Synchronous methods run in one background thread unless the column sets `THREADED` to false. Async methods always
+    run in an async worker, so they can await `self.app.push_screen_wait()` to ask for shared input.
+    Use `asyncio.to_thread()` for blocking work inside an async method.
+
+    When caching is enabled, Devboard updates the cache once after the operation, including no-ops and failed calls.
+    """
+
+    @wraps(method)
+    def action(column: _ActionColumnT) -> None:
+        column._apply_to_row_batch(partial(method, column))
 
     return action
 

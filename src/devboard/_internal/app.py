@@ -161,7 +161,10 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
             column
             for column in self.query(Column)
             if event.columns is None
-            or any(column is target or (isinstance(target, type) and isinstance(column, target)) for target in event.columns)
+            or any(
+                column is target or (isinstance(target, type) and isinstance(column, target))
+                for target in event.columns
+            )
         ]
         if columns:
             self._pending_item_refreshes.append((event.source.item_key(event.item), columns, event.force))
@@ -471,7 +474,12 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         finally:
             call(self._finish_scan)
 
-    def _replace_item_rows(self, identity: _ItemIdentity, results: dict[Column, _ItemRows], columns: Iterable[Column] | None = None) -> None:
+    def _replace_item_rows(
+        self,
+        identity: _ItemIdentity,
+        results: dict[Column, _ItemRows],
+        columns: Iterable[Column] | None = None,
+    ) -> None:
         """Replace rows for one item while keeping other rows and their selections."""
         for column in columns if columns is not None else self.query(Column):
             table = column.table

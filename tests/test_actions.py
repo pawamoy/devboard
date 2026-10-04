@@ -21,17 +21,21 @@
 from __future__ import annotations
 
 import asyncio
+from threading import get_ident
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import pytest
+from textual import on
 from textual.app import App
+from textual.screen import ModalScreen
+from textual.widgets import Input
 
-from devboard import Column, Project, Row, row_action
+from devboard import Column, Project, Row, row_action, rows_action
 from devboard._internal.default_board import ToPull
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
     from textual.app import ComposeResult
 
 
@@ -124,5 +128,183 @@ def test_subclass_adds_row_action_without_replacing_base_action() -> None:
             await pilot.pause()
 
             assert column.actions == [("base", "issue"), ("extra", "issue")]
+
+    asyncio.run(run_test())
+
+
+class BatchActionsColumn(Column[str]):
+    """Record the rows and execution thread received by a batch action."""
+
+    HEADERS = ("Value",)
+    BINDINGS: ClassVar = [("b", "batch", "Batch action")]
+
+    def __init__(self) -> None:
+        """Initialize batch history."""
+        super().__init__()
+        self.batches: list[list[Row[str]]] = []
+        self.action_thread: int | None = None
+
+    @rows_action
+    def action_batch(self, rows: list[Row[str]]) -> None:
+        """Record the entire batch and remove its rows."""
+        self.action_thread = get_ident()
+        self.batches.append(rows)
+        for row in rows:
+            row.remove()
+
+
+@pytest.mark.parametrize("threaded", [True, False], ids=["threaded", "foreground"])
+@pytest.mark.parametrize("selection", ["selected", "current", "empty", "filtered"])
+def test_rows_action_receives_one_visible_batch(selection: str, threaded: bool) -> None:
+    """Batch actions use visible selections, fall back to the cursor, and skip empty tables."""
+
+    async def run_test() -> None:
+        column = BatchActionsColumn()
+        column.THREADED = threaded
+        app = ActionApp(column)
+        async with app.run_test() as pilot:
+            column._reset()
+            if selection != "empty":
+                for value in ("first", "second", "third"):
+                    column._extend_item(value, [(value,)])
+            column._finalize()
+
+            # Leave the cursor on an unselected row to distinguish selection from fallback.
+            if selection in {"selected", "filtered"}:
+                for row in list(column.table.selectable_rows)[1:]:
+                    row.select()
+            if selection == "filtered":
+                column.filter_rows(lambda row: row.item != "second")
+
+            await pilot.press("b")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            await pilot.pause()
+
+            expected = {"selected": ["second", "third"], "current": ["first"], "empty": [], "filtered": ["third"]}[
+                selection
+            ]
+            assert len(column.batches) == bool(expected)
+            if expected:
+                # Snapshots retain source items and cells after the displayed rows are removed.
+                assert [row.item for row in column.batches[0]] == expected
+                assert [row.data for row in column.batches[0]] == [[value] for value in expected]
+                assert (column.action_thread != get_ident()) == threaded
+            remaining = {"selected": 1, "current": 2, "empty": 0, "filtered": 1}[selection]
+            assert column.table.row_count == remaining
+
+            if selection == "filtered":
+                # Clearing the filter restores the selected row excluded from the batch.
+                column.filter_rows(None)
+                assert [row.item for row in column.table.selectable_rows] == ["first", "second"]
+                assert [row.item for row in column.table.selected_rows] == ["second"]
+
+    asyncio.run(run_test())
+
+
+class BatchMessage(ModalScreen[str | None]):
+    """Ask for one message shared by the batch."""
+
+    BINDINGS: ClassVar = [("escape", "cancel", "Cancel")]
+
+    def compose(self) -> ComposeResult:
+        """Show a message input."""
+        yield Input()
+
+    @on(Input.Submitted)
+    def _submit(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value)
+
+    def action_cancel(self) -> None:
+        """Cancel the batch prompt."""
+        self.dismiss(None)
+
+
+class PromptBatchColumn(BatchActionsColumn):
+    """Apply one prompted message to every row in an async batch."""
+
+    def __init__(self) -> None:
+        """Initialize prompted operation history."""
+        super().__init__()
+        self.messages: list[tuple[str, str]] = []
+        self.prompts = 0
+
+    @rows_action
+    async def action_batch(self, rows: list[Row[str]]) -> None:
+        """Prompt once and record the same message for each row."""
+        self.prompts += 1
+        message = await self.app.push_screen_wait(BatchMessage())
+        if message is None:
+            return
+        for row in rows:
+            await asyncio.to_thread(self.messages.append, (row.item, message))
+            row.remove()
+
+
+@pytest.mark.parametrize("threaded", [True, False], ids=["threaded", "foreground"])
+@pytest.mark.parametrize("cancel", [True, False], ids=["cancel", "submit"])
+def test_async_rows_action_prompts_once_for_shared_input(threaded: bool, cancel: bool) -> None:
+    """An async worker can prompt once and either apply shared input or cancel the whole batch."""
+
+    async def run_test() -> None:
+        column = PromptBatchColumn()
+        column.THREADED = threaded
+        app = ActionApp(column)
+        async with app.run_test() as pilot:
+            column._reset()
+            for value in ("first", "second"):
+                column._extend_item(value, [(value,)])
+            column._finalize()
+            for row in column.table.selectable_rows:
+                row.select()
+
+            await pilot.press("b")
+            await pilot.pause()
+
+            assert isinstance(app.screen, BatchMessage)
+            if cancel:
+                await pilot.press("escape")
+            else:
+                app.screen.query_one(Input).value = "Shared message"
+                await pilot.press("enter")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            await pilot.pause()
+
+            assert column.prompts == 1
+            assert column.messages == ([] if cancel else [("first", "Shared message"), ("second", "Shared message")])
+            assert column.table.row_count == (2 if cancel else 0)
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("threaded", [True, False], ids=["threaded", "foreground"])
+def test_async_row_action_awaits_each_selected_row(threaded: bool) -> None:
+    """Single-row and batch decorators both support asynchronous callbacks."""
+
+    class AsyncColumn(BatchActionsColumn):
+        @row_action
+        async def action_record(self, row: Row[str]) -> None:
+            """Record a row after yielding to the event loop."""
+            await asyncio.sleep(0)
+            self.batches.append([row])
+            row.remove()
+
+    async def run_test() -> None:
+        column = AsyncColumn()
+        column.THREADED = threaded
+        app = ActionApp(column)
+        async with app.run_test() as pilot:
+            column._reset()
+            for value in ("first", "second"):
+                column._extend_item(value, [(value,)])
+            column._finalize()
+            for row in column.table.selectable_rows:
+                row.select()
+
+            column.action_record()
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            await pilot.pause()
+
+            assert sorted(batch[0].item for batch in column.batches) == ["first", "second"]
+            assert column.table.row_count == 0
 
     asyncio.run(run_test())

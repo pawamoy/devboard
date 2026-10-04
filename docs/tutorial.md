@@ -259,7 +259,7 @@ The `BINDINGS` variable is directly used by Textual:
 see [their Bindings documentation](https://textual.textualize.io/guide/input/#bindings)
 for more information.
 
-Next, we write `action_status` and `action_diff`. Textual action methods normally receive no row. The `row_action` decorator supplies each selected row, or the current row if none are selected. It also runs actions in background workers unless the column sets `THREADED` to `False`.
+Next, we write `action_status` and `action_diff`. Textual action methods normally receive no row. The `row_action` decorator supplies each selected row, or the current row if none are selected. Synchronous methods run in background threads unless the column sets `THREADED` to `False`. Async methods run in async workers.
 
 The [`devboard.Row`][] instance has an `item` attribute that returns the [`devboard.Project`][] that produced it. The project does not have to be one of the displayed cells.
 The project itself has a `repo` attribute that returns a `Repo` object
@@ -484,6 +484,59 @@ board = Board([
 ```python exec="1" html="1" session="screenshots-tutorial"
 print(screenshot("columns/commit_pull", size=(100, 20), press=("tab")))
 ```
+
+### Asking for shared input in a batch action
+
+Use [`rows_action`][devboard.rows_action] when an operation needs all selected rows together. The method receives one list of visible selected rows. With no selection, it receives a list containing the current row. Empty tables skip the method.
+
+For example, a commit action can ask for one message and use it for every selected project. Create a Textual `ModalScreen[str | None]` named `CommitMessage`. Dismiss it with the entered message, or `None` when canceled. Add this action to your `ToCommit` column:
+
+```python
+import asyncio
+
+from git import GitCommandError
+from rich.markup import escape
+
+from devboard import Column, Project, Row, rows_action
+
+
+class ToCommit(Column[Project]):
+    BINDINGS = [("c", "commit", "Commit")]
+    _committing = False
+
+    @rows_action
+    async def action_commit(self, rows: list[Row[Project]]) -> None:
+        if self._committing:
+            self.notify_warning("A commit operation is already ongoing")
+            return
+        self._committing = True
+        try:
+            message = await self.app.push_screen_wait(CommitMessage())
+            if not message:
+                return
+            for row in rows:
+                project = row.item
+                with project.locked() as acquired:
+                    if not acquired:
+                        self.notify_warning(f"An operation is ongoing in {project}")
+                        continue
+                    try:
+                        await asyncio.to_thread(project.repo.git.add, A=True)
+                        await asyncio.to_thread(project.repo.git.commit, m=message)
+                    except GitCommandError as error:
+                        self.notify_error(escape(str(error)))
+                        continue
+                row.remove()
+                row.refresh()
+        finally:
+            self._committing = False
+```
+
+Async methods run in an async worker, which allows `push_screen_wait()` to wait for input. This applies even when `THREADED` is `True`. Use `asyncio.to_thread()` for blocking Git commands so the interface remains responsive.
+
+Synchronous methods run once in a background thread by default. Set `THREADED = False` to run them on the UI thread. Both decorators provide stable row snapshots and save the cache once after the operation, including no-ops and failures.
+
+Action arguments use `row` or `rows`. Each `row.item` is the source object that produced the displayed row. Source APIs retain `list_items()`, `item_key()`, `refresh_item()`, and `force_refresh_item()`, because one item can produce multiple rows.
 
 ## Building the "To Push" column
 
