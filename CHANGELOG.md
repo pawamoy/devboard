@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [0.6.1](https://github.com/pawamoy/devboard/releases/tag/0.6.1) - 2026-10-06
+
+<small>[Compare with 0.6.0](https://github.com/pawamoy/devboard/compare/0.6.0...0.6.1)</small>
+
+### Code Refactoring
+
+- Extend bindings instead of replacing them ([bd30cdb](https://github.com/pawamoy/devboard/commit/bd30cdb677d3063b91dc9a055aba9454f4f3f8b3) by Timothée Mazzucotelli).
+
 ## [0.6.0](https://github.com/pawamoy/devboard/releases/tag/0.6.0) - 2026-10-05
 
 <small>[Compare with 0.5.0](https://github.com/pawamoy/devboard/compare/0.5.0...0.6.0)</small>
