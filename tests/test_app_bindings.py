@@ -28,6 +28,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from textual.binding import Binding
 from textual.command import CommandInput, CommandPalette
+from textual.selection import SELECT_ALL
 from textual.widgets import Footer, HelpPanel, Static
 from textual.widgets._footer import FooterKey
 
@@ -62,33 +63,54 @@ def _render_keys_panel(panel: HelpPanel) -> str:
     return capture.get()
 
 
-@pytest.mark.parametrize("exit_key", ["q", "ctrl+q", "escape"])
+@pytest.mark.parametrize("exit_key", ["ctrl+c", "escape"])
 def test_default_help_and_exit_keys(exit_key: str) -> None:
-    """Boards that omit bindings get help and all three exit aliases."""
+    """Default bindings open help and exit only with Ctrl+C or Escape."""
 
     class DefaultBindingsDevboard(CustomBindingsDevboard):
         def _load_board(self) -> Board:
             """Use the default application bindings."""
-            return Board([])
+            return Board([ChangesColumn()])
 
     async def run_test() -> None:
         app = DefaultBindingsDevboard()
         async with app.run_test() as pilot:
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            column = app.query_one(ChangesColumn)
+            app.set_focus(column.table)
+
             await pilot.press("question_mark")
 
             assert isinstance(app.screen, Modal)
 
-            app.screen.dismiss()
+            # Escape closes help without exiting the application.
+            await pilot.press("escape")
             await pilot.pause()
+
+            assert not isinstance(app.screen, Modal)
+            assert not app.exit_requested
+
+            # The former exit keys leave the board running.
+            await pilot.press("q", "ctrl+q")
+
+            assert not app.exit_requested
+            assert app.is_running
+
+            # Selected text must not divert Ctrl+C to Textual's copy action.
+            app.screen.selections = {column.query_one(".column-title", Static): SELECT_ALL}
+
+            assert app.screen.get_selected_text()
+
             await pilot.press(exit_key)
 
             assert app.exit_requested
+            assert not column.is_collapsed
 
     asyncio.run(run_test())
 
 
 def test_default_refresh_keys_choose_scope_and_item_hook(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Lowercase R, uppercase R, and control keys refresh their intended scopes."""
+    """Modified refresh keys scan their intended scopes and leave plain letters available."""
     issues = [Issue("repo", 1, "First"), Issue("repo", 2, "Second")]
     first = CountingIssuesColumn(issues)
     second = CountingIssuesColumn([issues[0]])
@@ -104,10 +126,22 @@ def test_default_refresh_keys_choose_scope_and_item_hook(monkeypatch: pytest.Mon
             await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
             app.set_focus(first.table)
 
+            # Plain letters remain available for custom board and column actions.
+            first.scanned.clear()
+            second.scanned.clear()
+            prepared.clear()
+
+            await pilot.press("r", "R")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+
+            assert first.scanned == []
+            assert second.scanned == []
+            assert prepared == []
+
             # The same item appears in both columns, while the second item appears only in the first.
             for key, expected_first, expected_second, expected_prepared in (
-                ("r", [1], [1], [("normal", 1)]),
-                ("R", [1, 2], [], [("normal", 1), ("normal", 2)]),
+                ("alt+r", [1], [1], [("normal", 1)]),
+                ("alt+shift+r", [1, 2], [], [("normal", 1), ("normal", 2)]),
                 ("ctrl+r", [1, 2], [1], [("normal", 1), ("normal", 2)]),
                 ("ctrl+shift+r", [1, 2], [1], [("forced", 1), ("forced", 2)]),
             ):
@@ -136,7 +170,7 @@ def test_empty_board_bindings_disable_defaults() -> None:
     async def run_test() -> None:
         app = UnboundDevboard()
         async with app.run_test() as pilot:
-            await pilot.press("question_mark", "q", "ctrl+q", "escape")
+            await pilot.press("question_mark", "q", "ctrl+q", "ctrl+c", "escape")
 
             assert not isinstance(app.screen, Modal)
             assert not app.exit_requested
@@ -162,7 +196,7 @@ def test_board_can_replace_help_and_exit_keys() -> None:
             assert footer_keys["command_palette"].region.right == footer.region.right
 
             # The original keys and Textual's inherited quit key do nothing.
-            await pilot.press("question_mark", "q", "ctrl+q")
+            await pilot.press("question_mark", "q", "ctrl+q", "ctrl+c", "escape")
 
             assert not isinstance(app.screen, Modal)
             assert not app.exit_requested

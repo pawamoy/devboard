@@ -80,7 +80,8 @@ class SnapshotDevboard(Devboard):
         return Board(
             [ChangesColumn(), UpdatesColumn()],
             bindings=[
-                Binding("ctrl+q, q, escape", "exit", "Exit", key_display="Q"),
+                Binding("ctrl+c", "exit", "Exit", priority=True),
+                Binding("escape", "exit", "Exit"),
                 Binding("question_mark", "show_help", "Help"),
                 ("ctrl+r", "refresh_board", "Refresh"),
                 ("ctrl+shift+r", "force_refresh_board", "Force refresh"),

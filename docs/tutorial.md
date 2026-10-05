@@ -259,7 +259,7 @@ The `BINDINGS` variable is directly used by Textual:
 see [their Bindings documentation](https://textual.textualize.io/guide/input/#bindings)
 for more information.
 
-Next, we write `action_status` and `action_diff`. Textual action methods normally receive no row. The `row_action` decorator supplies each selected row, or the current row if none are selected. Synchronous methods run in background threads unless the column sets `THREADED` to `False`. Async methods run in async workers.
+Next, we write `action_status` and `action_diff`. Textual action methods normally receive no row. The `row_action` decorator supplies each selected visible row, or the current row if no visible rows are selected. Synchronous methods run in background threads unless the column sets `THREADED` to `False`. Async methods run in async workers.
 
 The [`devboard.Row`][] instance has an `item` attribute that returns the [`devboard.Project`][] that produced it. The project does not have to be one of the displayed cells.
 The project itself has a `repo` attribute that returns a `Repo` object
@@ -678,14 +678,16 @@ A normal refresh lists and scans the projects again. It does not contact their r
 
 Devboard fetches and scans each project in one worker task. It does not wait for all fetches to finish before it starts scanning projects. The `force_refresh_on_startup` option applies this behavior during startup.
 
+### Keyboard controls
+
 Boards use these default application bindings:
 
 | Key | Action |
 | --- | --- |
 | `?` | Show help |
-| ++q++, ++ctrl+q++, or ++escape++ | Exit |
-| ++r++ | Refresh the item under the cursor across columns |
-| ++shift+r++ (`R`) | Refresh the focused column |
+| ++ctrl+c++ or ++escape++ | Exit from the main board |
+| ++alt+r++ | Refresh the item under the cursor across columns |
+| ++alt+shift+r++ | Refresh the focused column |
 | ++ctrl+r++ | Refresh all columns |
 | ++ctrl+shift+r++ | Force-refresh all columns |
 | ++ctrl+f++ | Filter all columns |
@@ -693,16 +695,23 @@ Boards use these default application bindings:
 Pass `bindings` to [`Board`][devboard.Board] to replace these defaults. Pass `bindings=[]` to disable them.
 To add shortcuts to the defaults, use `bindings=[*Board.BINDINGS, ("f", "filter_board", "Filter board")]`.
 
+Default application shortcuts leave unmodified letters available for custom board and column actions. Special characters such as `?`, `*`, and `!` retain their built-in bindings.
+
+Press ++escape++ to close a help or output dialog, cancel a filter prompt, or close the command palette.
 
 The footer shows progress messages on the left and the focused column's custom actions, **Keys**, and **Palette** on the right. Press ++ctrl+k++ to show or hide the **Keys** panel. This panel lists the available bindings, including shortcuts hidden from the footer.
 
-The **Keys** panel separates **Main keys**, **Selection**, **Columns**, **Column actions**, and **Movement**. **Columns** contains collapse, maximize, and refresh shortcuts. **Column actions** contains the custom shortcuts for the focused column, including inherited bindings.
+The **Keys** panel separates **Main keys**, **Selection**, **Columns**, **Column actions**, and **Movement**. **Columns** contains collapse, maximize, refresh, and filter shortcuts. **Column actions** contains the custom shortcuts for the focused column, including inherited bindings.
+
+See the [overview](index.md#keyboard-controls) for navigation keys and default Git actions, and [row selection](index.md#row-selection) for selection shortcuts.
 
 Columns collapse automatically when they have no visible rows, including when a filter hides every row.
-Click a collapsed column or press ++tab++ to focus it. Press ++ctrl+c++ to expand or collapse the focused column.
+Click a collapsed column or press ++tab++ to focus it. Press ++ctrl+e++ to expand or collapse the focused column.
 An expanded column's table remains focusable even when it is empty.
-Press ++ctrl+m++ to maximize the focused column. Press ++ctrl+m++ again to restore the previous layout.
+Press ++ctrl+x++ to maximize the focused column. Press ++ctrl+x++ again to restore the previous layout.
 Other columns remain focusable while collapsed by maximization.
+
+Terminals usually send ++ctrl+m++ as ++enter++, so maximization uses ++ctrl+x++.
 
 You can bind `refresh_board` and `force_refresh_board` to scan all columns. Bind `refresh_column` and `force_refresh_column` to scan only the focused column. Bind `refresh_item` and `force_refresh_item` to scan the item under the cursor. An item refresh updates that item in each column that lists it. The forced actions call your board's `force_refresh_item()` hook.
 

@@ -162,8 +162,9 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
     """A Devboard column."""
 
     BINDINGS: ClassVar = [
-        Binding("ctrl+c", "toggle_collapse", "Collapse/expand column", show=False),
-        Binding("ctrl+m", "toggle_maximize", "Maximize/unmaximize column", show=False),
+        Binding("ctrl+e", "toggle_collapse", "Collapse/expand column", show=False),
+        # Terminals send Ctrl+M as Enter, so use Ctrl+X for maximization.
+        Binding("ctrl+x", "toggle_maximize", "Maximize/unmaximize column", show=False),
     ]
     """Column key bindings."""
     is_collapsed: Reactive[bool] = reactive(default=False, init=False, layout=True, toggle_class="-collapsed")
@@ -580,9 +581,11 @@ class Board:
 
     BINDINGS: ClassVar = [
         Binding("question_mark", "show_help", "Help"),
-        Binding("q, ctrl+q, escape", "exit", "Exit"),
-        Binding("r", "refresh_item", "Refresh item", show=False),
-        Binding("R", "refresh_column", "Refresh column", show=False),
+        # Keep Ctrl+C available for exit when text is selected.
+        Binding("ctrl+c", "exit", "Exit", priority=True),
+        Binding("escape", "exit", "Exit"),
+        Binding("alt+r", "refresh_item", "Refresh item", show=False),
+        Binding("alt+shift+r", "refresh_column", "Refresh column", show=False),
         Binding("ctrl+r", "refresh_board", "Refresh board", show=False),
         Binding("ctrl+shift+r", "force_refresh_board", "Force refresh board", show=False),
         Binding("ctrl+f", "filter_board", "Filter board", show=False),

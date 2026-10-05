@@ -16,7 +16,7 @@ an issue, a pull request, or an object from another provider.
 The default board uses Git projects and collects their status, commits,
 branches, and tags.
 
-Press ++ctrl+r++ to scan the current project data again. Press ++ctrl+shift+r++ to fetch and then scan each project.
+Press ++ctrl+r++ to scan all columns again. On the default Git board, ++ctrl+shift+r++ fetches remote data before scanning each project.
 
 To start using Devboard, try to run the `devboard` command
 in your terminal. It will show you a default board with four columns:
@@ -55,6 +55,53 @@ setx DEVBOARD_PROJECTS ~/path/to/your/projects
 ```
 ///
 
+### Keyboard controls
+
+These shortcuts apply to boards that use the default bindings. Custom boards can replace the board shortcuts and add column actions.
+
+| Key | Action |
+| --- | --- |
+| `?` | Show help for the current board |
+| ++ctrl+k++ | Show or hide the Keys panel |
+| ++ctrl+p++ | Open the command palette |
+| ++ctrl+c++ or ++escape++ | Exit from the main board |
+| ++alt+r++ | Refresh the item under the cursor across columns that list it |
+| ++alt+shift+r++ | Refresh the focused column |
+| ++ctrl+r++ | Refresh all columns |
+| ++ctrl+shift+r++ | Force-refresh all columns |
+| ++ctrl+f++ | Filter all columns |
+| ++ctrl+e++ | Collapse or expand the focused column |
+| ++ctrl+x++ | Maximize the focused column or restore its previous layout |
+
+The Keys panel includes shortcuts hidden from the footer and updates when focus changes. The command palette also provides **Force refresh item**, **Force refresh column**, and **Filter column**, without default shortcuts.
+
+In the filter prompt, press ++enter++ to apply the text or ++escape++ to cancel. Submit empty text to clear the filter. The default filter searches displayed cells and ignores case.
+
+| Navigation key | Action |
+| --- | --- |
+| ++tab++ / ++shift+tab++ | Move focus forward / backward between widgets, including collapsed columns |
+| ++up++ / ++down++ | Move the row cursor |
+| ++left++ / ++right++ | Scroll the table horizontally |
+| ++page-up++ / ++page-down++ | Move the row cursor by a page |
+| ++ctrl+home++ / ++ctrl+end++ | Move to the first / last row |
+| ++home++ / ++end++ | Scroll to the left / right edge of the table |
+
+Use ++space++ to toggle a row's checkbox. Pressing ++enter++ emits Textual's row-selection event, which the default board does not handle.
+
+Default application shortcuts leave unmodified letters available for custom board and column actions. Special characters such as `?`, `*`, and `!` have built-in bindings. See the [tutorial](tutorial.md#keyboard-controls) to customize bindings.
+
+The default Git board adds these actions in the focused column:
+
+| Column | Key | Action |
+| --- | --- | --- |
+| To Commit | ++s++ | Show Git status |
+| To Commit | ++d++ | Show Git diff |
+| To Pull | ++p++ | Pull the branch from `origin`; blocked if the project has uncommitted changes |
+| To Pull | ++d++ | Force-delete the local branch without a confirmation prompt |
+| To Push | ++p++ | Push the branch to `origin` |
+
+The **To Release** column has no additional shortcuts.
+
 ### Informative actions
 
 Once your board displays some rows in the "To Commit" column,
@@ -65,7 +112,7 @@ print(screenshot("columns/commit_pull_push_release", size=(100, 24), press=("dow
 ```
 
 You can scroll using the mouse wheel and the arrows.
-You can dismiss the modal window with any other key press.
+Press ++escape++ or any unbound key to close the dialog.
 
 ### Background actions
 
@@ -107,12 +154,12 @@ print(screenshot("columns/notify", size=(100, 24), press=("tab", "down", "p"), e
 
 ### Row selection
 
-You can select multiple rows and apply actions on all selected rows at once.
+Column actions apply to selected visible rows in the focused column. If no visible rows are selected, actions use the current row. Hidden rows retain their selections but do not participate in actions.
 
 - To select a row, press ++space++. To unselect it, press ++space++ again.
-- To select all rows, press ++ctrl+a++ or ++num-asterisk++.
-- To reverse the selection, press ++exclam++.
-- To expand the selection upwards or downwards, hold ++shift++ and press ++up++ or ++down++.
+- To select all visible rows, press ++ctrl+a++ or `*`. If all visible rows are selected, this clears their selection.
+- To reverse the selection of visible rows, press `!`.
+- Press ++shift+up++ or ++shift+down++ to move to the previous or next row and toggle that row's selection.
 
 
 ```python exec="1" html="1" session="screenshots-usage"
