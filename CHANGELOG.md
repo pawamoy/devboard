@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [0.6.0](https://github.com/pawamoy/devboard/releases/tag/0.6.0) - 2026-10-05
+
+<small>[Compare with 0.5.0](https://github.com/pawamoy/devboard/compare/0.5.0...0.6.0)</small>
+
+### Features
+
+- Add API for batched row operations ([4a0b5bf](https://github.com/pawamoy/devboard/commit/4a0b5bfd7167197e41396af9f4f80c39576809d7) by Timothée Mazzucotelli).
+- Allow refreshing other columns after successful operations ([b6dec0d](https://github.com/pawamoy/devboard/commit/b6dec0d505813e246974e58219d733067e95b34d) by Timothée Mazzucotelli).
+
+### Code Refactoring
+
+- Change keybindings again to something more intuitive ([154386d](https://github.com/pawamoy/devboard/commit/154386d32f6a2297e7f99c982b531348e3de1a87) by Timothée Mazzucotelli).
+- Change `c` and `m` keybinds to `ctrl-c` and `ctrl-m` ([7943a7d](https://github.com/pawamoy/devboard/commit/7943a7d2dc7f5337521e78aae6db0c145f74656a) by Timothée Mazzucotelli).
+
 ## [0.5.0](https://github.com/pawamoy/devboard/releases/tag/0.5.0) - 2026-10-01
 
 <small>[Compare with 0.4.0](https://github.com/pawamoy/devboard/compare/0.4.0...0.5.0)</small>
