@@ -584,13 +584,11 @@ class Board:
         # Keep Ctrl+C available for exit when text is selected.
         Binding("ctrl+c", "exit", "Exit", priority=True),
         Binding("escape", "exit", "Exit"),
-        Binding("alt+r", "refresh_item", "Refresh item", show=False),
-        Binding("alt+shift+r", "refresh_column", "Refresh column", show=False),
         Binding("ctrl+r", "refresh_board", "Refresh board", show=False),
-        Binding("ctrl+shift+r", "force_refresh_board", "Force refresh board", show=False),
+        Binding("ctrl+f5", "force_refresh_board", "Force refresh board", show=False),
         Binding("ctrl+f", "filter_board", "Filter board", show=False),
     ]
-    """Default application bindings used when a board does not specify its own."""
+    """Application bindings extended or overridden by subclasses and constructor bindings."""
 
     def __init__(
         self,
@@ -603,14 +601,23 @@ class Board:
 
         Parameters:
             columns: Column instances or classes displayed by the board.
-            bindings: Application bindings owned by the board. Omit this argument to use `BINDINGS`.
-                An explicit iterable replaces the defaults. An empty iterable disables them.
+            bindings: Application bindings that extend the inherited `BINDINGS`.
+                Bindings override earlier entries for the same key. Omit this argument or pass an empty iterable to keep the defaults.
             force_refresh_on_startup: Whether startup uses the forced item hook.
         """
         self.columns: tuple[Column | type[Column], ...] = tuple(columns)
         """Column instances or classes displayed by the board."""
-        self.bindings: tuple[BindingType, ...] = tuple(self.BINDINGS if bindings is None else bindings)
-        """Application bindings owned by the board."""
+        binding_specs: list[BindingType] = []
+        for cls in reversed(type(self).__mro__):
+            binding_specs.extend(cls.__dict__.get("BINDINGS", ()))
+        if bindings is not None:
+            binding_specs.extend(bindings)
+
+        # Resolve aliases first so an override replaces only the keys it specifies.
+        self.bindings: tuple[BindingType, ...] = tuple(
+            {binding.key: binding for binding in Binding.make_bindings(binding_specs)}.values(),
+        )
+        """Application bindings after combining defaults, subclass bindings, and constructor bindings."""
         self.force_refresh_on_startup: bool = force_refresh_on_startup
         """Whether startup uses the forced item hook."""
 

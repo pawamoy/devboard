@@ -686,14 +686,15 @@ Boards use these default application bindings:
 | --- | --- |
 | `?` | Show help |
 | ++ctrl+c++ or ++escape++ | Exit from the main board |
-| ++alt+r++ | Refresh the item under the cursor across columns |
-| ++alt+shift+r++ | Refresh the focused column |
 | ++ctrl+r++ | Refresh all columns |
-| ++ctrl+shift+r++ | Force-refresh all columns |
+| ++ctrl+f5++ | Force-refresh all columns |
 | ++ctrl+f++ | Filter all columns |
 
-Pass `bindings` to [`Board`][devboard.Board] to replace these defaults. Pass `bindings=[]` to disable them.
-To add shortcuts to the defaults, use `bindings=[*Board.BINDINGS, ("f", "filter_board", "Filter board")]`.
+Pass `bindings` to [`Board`][devboard.Board] to add shortcuts or override existing keys. Other default shortcuts remain available. Omitting `bindings` or passing `bindings=[]` keeps all defaults.
+
+For example, use `bindings=[("f", "filter_board", "Filter board")]` to add ++f++ while keeping ++ctrl+f++ and the other defaults. Use `bindings=[("ctrl+r", "force_refresh_board", "Force refresh board")]` to change only ++ctrl+r++.
+
+Each key in a comma-separated binding overrides only that key. Later entries take precedence for duplicate keys. A subclass's `BINDINGS` extends inherited bindings, and constructor bindings take precedence over class bindings.
 
 Default application shortcuts leave unmodified letters available for custom board and column actions. Special characters such as `?`, `*`, and `!` retain their built-in bindings.
 

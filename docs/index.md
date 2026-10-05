@@ -57,7 +57,7 @@ setx DEVBOARD_PROJECTS ~/path/to/your/projects
 
 ### Keyboard controls
 
-These shortcuts apply to boards that use the default bindings. Custom boards can replace the board shortcuts and add column actions.
+Boards keep these default shortcuts unless they override the same keys. Custom boards can add shortcuts and column actions.
 
 | Key | Action |
 | --- | --- |
@@ -65,15 +65,13 @@ These shortcuts apply to boards that use the default bindings. Custom boards can
 | ++ctrl+k++ | Show or hide the Keys panel |
 | ++ctrl+p++ | Open the command palette |
 | ++ctrl+c++ or ++escape++ | Exit from the main board |
-| ++alt+r++ | Refresh the item under the cursor across columns that list it |
-| ++alt+shift+r++ | Refresh the focused column |
 | ++ctrl+r++ | Refresh all columns |
-| ++ctrl+shift+r++ | Force-refresh all columns |
+| ++ctrl+f5++ | Force-refresh all columns |
 | ++ctrl+f++ | Filter all columns |
 | ++ctrl+e++ | Collapse or expand the focused column |
 | ++ctrl+x++ | Maximize the focused column or restore its previous layout |
 
-The Keys panel includes shortcuts hidden from the footer and updates when focus changes. The command palette also provides **Force refresh item**, **Force refresh column**, and **Filter column**, without default shortcuts.
+The Keys panel includes shortcuts hidden from the footer and updates when focus changes. The command palette also provides item refresh, column refresh, their forced versions, and **Filter column**, without default shortcuts.
 
 In the filter prompt, press ++enter++ to apply the text or ++escape++ to cancel. Submit empty text to clear the filter. The default filter searches displayed cells and ignores case.
 

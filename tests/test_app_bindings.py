@@ -109,12 +109,18 @@ def test_default_help_and_exit_keys(exit_key: str) -> None:
     asyncio.run(run_test())
 
 
-def test_default_refresh_keys_choose_scope_and_item_hook(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Modified refresh keys scan their intended scopes and leave plain letters available."""
+def test_custom_refresh_keys_extend_default_refresh_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Custom item and column keys coexist with default board refresh keys."""
     issues = [Issue("repo", 1, "First"), Issue("repo", 2, "Second")]
     first = CountingIssuesColumn(issues)
     second = CountingIssuesColumn([issues[0]])
-    board = Board([first, second])
+    board = Board(
+        [first, second],
+        bindings=[
+            ("alt+r", "refresh_item", "Refresh item"),
+            ("alt+shift+r", "refresh_column", "Refresh column"),
+        ],
+    )
     prepared: list[tuple[str, int]] = []
     monkeypatch.setattr(board, "refresh_item", lambda item: prepared.append(("normal", item.number)))
     monkeypatch.setattr(board, "force_refresh_item", lambda item: prepared.append(("forced", item.number)))
@@ -143,7 +149,7 @@ def test_default_refresh_keys_choose_scope_and_item_hook(monkeypatch: pytest.Mon
                 ("alt+r", [1], [1], [("normal", 1)]),
                 ("alt+shift+r", [1, 2], [], [("normal", 1), ("normal", 2)]),
                 ("ctrl+r", [1, 2], [1], [("normal", 1), ("normal", 2)]),
-                ("ctrl+shift+r", [1, 2], [1], [("forced", 1), ("forced", 2)]),
+                ("ctrl+f5", [1, 2], [1], [("forced", 1), ("forced", 2)]),
             ):
                 first.scanned.clear()
                 second.scanned.clear()
@@ -159,27 +165,38 @@ def test_default_refresh_keys_choose_scope_and_item_hook(monkeypatch: pytest.Mon
     asyncio.run(run_test())
 
 
-def test_empty_board_bindings_disable_defaults() -> None:
-    """An explicit empty bindings list disables the board's default shortcuts."""
+@pytest.mark.parametrize("exit_key", ["ctrl+c", "escape"])
+def test_empty_board_bindings_keep_defaults(exit_key: str) -> None:
+    """An empty bindings list keeps the board's default shortcuts."""
 
-    class UnboundDevboard(CustomBindingsDevboard):
+    class DefaultBindingsDevboard(CustomBindingsDevboard):
         def _load_board(self) -> Board:
-            """Disable the default application bindings."""
+            """Add no custom bindings to the defaults."""
             return Board([], bindings=[])
 
     async def run_test() -> None:
-        app = UnboundDevboard()
+        app = DefaultBindingsDevboard()
         async with app.run_test() as pilot:
-            await pilot.press("question_mark", "q", "ctrl+q", "ctrl+c", "escape")
+            await pilot.press("question_mark")
 
-            assert not isinstance(app.screen, Modal)
+            assert isinstance(app.screen, Modal)
+
+            # Escape closes help, and both default exit keys still work on the board.
+            await pilot.press("escape")
+
             assert not app.exit_requested
+
+            await pilot.press(exit_key)
+
+            assert app.exit_requested
+            assert not isinstance(app.screen, Modal)
 
     asyncio.run(run_test())
 
 
-def test_board_can_replace_help_and_exit_keys() -> None:
-    """Only the board's keys open help and request exit."""
+@pytest.mark.parametrize("exit_key", ["ctrl+c", "escape", "x"])
+def test_board_bindings_extend_defaults(exit_key: str) -> None:
+    """Custom help and exit keys work alongside the defaults."""
 
     async def run_test() -> None:
         app = CustomBindingsDevboard()
@@ -195,20 +212,97 @@ def test_board_can_replace_help_and_exit_keys() -> None:
             assert footer_keys["toggle_help_panel"].region.right == footer_keys["command_palette"].region.x
             assert footer_keys["command_palette"].region.right == footer.region.right
 
-            # The original keys and Textual's inherited quit key do nothing.
-            await pilot.press("question_mark", "q", "ctrl+q", "ctrl+c", "escape")
+            # Textual's inherited quit keys remain unused.
+            await pilot.press("q", "ctrl+q")
 
             assert not isinstance(app.screen, Modal)
             assert not app.exit_requested
 
-            # The custom keys invoke Devboard's existing actions.
-            await pilot.press("h")
-            await pilot.pause()
+            # Both default and custom help keys open the same dialog.
+            for help_key in ("question_mark", "h"):
+                await pilot.press(help_key)
+
+                assert isinstance(app.screen, Modal)
+
+                await pilot.press("escape")
+
+                assert not isinstance(app.screen, Modal)
+                assert not app.exit_requested
+
+            await pilot.press(exit_key)
+
+            assert not isinstance(app.screen, Modal)
+            assert app.exit_requested
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("help_key", ["question_mark", "ctrl+c", "ctrl+r", "ctrl+k", "ctrl+p"])
+def test_board_bindings_override_matching_default_keys(help_key: str) -> None:
+    """Custom aliases override matching board and app keys, including priority bindings."""
+
+    class OverrideDevboard(CustomBindingsDevboard):
+        def _load_board(self) -> Board:
+            """Use a generator with overlapping aliases and a literal punctuation key."""
+            return Board(
+                [],
+                bindings=iter(
+                    [
+                        ("ctrl+r", "exit", "Earlier exit"),
+                        ("?, ctrl+c, ctrl+r, ctrl+k, ctrl+p", "show_help", "Custom help"),
+                    ],
+                ),
+            )
+
+    async def run_test() -> None:
+        app = OverrideDevboard()
+        async with app.run_test() as pilot:
+            await pilot.press(help_key)
 
             assert isinstance(app.screen, Modal)
+            assert not app.exit_requested
 
-            await pilot.press("escape", "x")
-            await pilot.pause()
+            # Help lists the effective actions, without superseded bindings.
+            content = app.screen.query_one(Static).content
+
+            assert isinstance(content, Markdown)
+            assert "Custom help" in content.markup
+            assert "Force refresh board" in content.markup
+            assert "Earlier exit" not in content.markup
+            for description in ("Help", "Keys", "Palette", "Refresh board"):
+                assert f": {description}\n" not in content.markup
+
+    asyncio.run(run_test())
+
+
+def test_board_subclass_bindings_extend_inherited_defaults() -> None:
+    """Subclass bindings extend base bindings, and constructor bindings take precedence."""
+
+    class SharedBoard(Board):
+        BINDINGS: ClassVar = [("h, f1", "exit", "Shared exit"), ("f2", "show_help", "Parent help")]
+
+    class HelpBoard(SharedBoard):
+        BINDINGS: ClassVar = [("h, f1", "show_help", "Shared help")]
+
+    class InheritedDevboard(CustomBindingsDevboard):
+        def _load_board(self) -> Board:
+            """Override one alias while keeping the other alias and default shortcuts."""
+            return HelpBoard([], bindings=[("h", "exit", "Custom exit")])
+
+    async def run_test() -> None:
+        app = InheritedDevboard()
+        async with app.run_test() as pilot:
+            # Default help, a parent key, and the remaining subclass alias all open help.
+            for help_key in ("question_mark", "f2", "f1"):
+                await pilot.press(help_key)
+
+                assert isinstance(app.screen, Modal)
+                assert not app.exit_requested
+
+                await pilot.press("escape")
+
+            # The constructor overrides only its specified alias.
+            await pilot.press("h")
 
             assert not isinstance(app.screen, Modal)
             assert app.exit_requested
@@ -423,13 +517,16 @@ def test_palette_keys_command_opens_grouped_panel() -> None:
             await pilot.press("enter")
             await pilot.pause()
 
-            # A board without columns has no selection or column sections.
+            # A board without columns still lists board refresh and filter shortcuts.
             panel_text = _render_keys_panel(app.query_one(HelpPanel))
 
             assert "Main keys" in panel_text
             for description in ("Keys", "Palette", "Help", "Exit"):
                 assert description in panel_text
-            for group in ("Selection", "Columns", "Column actions"):
+            assert "Columns" in panel_text
+            for description in ("Refresh board", "Force refresh board", "Filter board"):
+                assert description in panel_text
+            for group in ("Selection", "Column actions"):
                 assert group not in panel_text
 
             await pilot.press("ctrl+k")

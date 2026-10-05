@@ -23,8 +23,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from textual.binding import Binding
-
 from devboard import Board, Column, Devboard, Project
 
 if TYPE_CHECKING:
@@ -80,10 +78,7 @@ class SnapshotDevboard(Devboard):
         return Board(
             [ChangesColumn(), UpdatesColumn()],
             bindings=[
-                Binding("ctrl+c", "exit", "Exit", priority=True),
-                Binding("escape", "exit", "Exit"),
-                Binding("question_mark", "show_help", "Help"),
                 ("ctrl+r", "refresh_board", "Refresh"),
-                ("ctrl+shift+r", "force_refresh_board", "Force refresh"),
+                ("ctrl+f5", "force_refresh_board", "Force refresh"),
             ],
         )

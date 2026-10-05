@@ -81,7 +81,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         Binding("ctrl+k", "toggle_help_panel", "Keys"),
         Binding("ctrl+p", "command_palette", "Palette", show=False, priority=True, tooltip="Open the command palette"),
     ]
-    """Application shortcuts available on every board."""
+    """Application shortcuts extended or overridden by board bindings."""
 
     CSS_PATH = Path(__file__).parent / "devboard.tcss"
     """Path to the CSS file."""
@@ -190,8 +190,7 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
     def action_show_help(self) -> None:
         """Show help."""
         lines = ["## Main keys\n\n"]
-        lines.extend(self._binding_specs_help(self.board.bindings))
-        lines.extend(self._bindings_help(Devboard))
+        lines.extend(self._binding_specs_help(binding for _, binding in self._bindings))
         lines.append("\n\n## Selection\n\n")
         lines.extend(self._bindings_help(DataTable, search_up=True))
         lines.append("\n\n## Columns\n\n")
@@ -620,9 +619,9 @@ class Devboard(App, ModalMixin, inherit_bindings=False):
         return definition.board
 
     def _bind_board_actions(self) -> None:
-        """Install board bindings with their options intact and hide them from the footer."""
+        """Install board bindings over app defaults and hide them from the footer."""
         bindings = (replace(binding, show=False) for binding in Binding.make_bindings(self.board.bindings))
-        self._bindings = BindingsMap.merge([self._bindings, BindingsMap(bindings)])
+        self._bindings.key_to_bindings.update(BindingsMap(bindings).key_to_bindings)
 
     @staticmethod
     def _bindings_help(cls: type, *, search_up: bool = False) -> Iterator[str]:  # noqa: PLW0211
