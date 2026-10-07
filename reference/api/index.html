@@ -5839,36 +5839,36 @@ Bindings override earlier entries for the same key. Omit this argument or pass a
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>src/devboard/_internal/board.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">593</span>
-<span class="normal">594</span>
-<span class="normal">595</span>
-<span class="normal">596</span>
-<span class="normal">597</span>
-<span class="normal">598</span>
-<span class="normal">599</span>
-<span class="normal">600</span>
-<span class="normal">601</span>
-<span class="normal">602</span>
-<span class="normal">603</span>
-<span class="normal">604</span>
-<span class="normal">605</span>
-<span class="normal">606</span>
-<span class="normal">607</span>
-<span class="normal">608</span>
-<span class="normal">609</span>
-<span class="normal">610</span>
-<span class="normal">611</span>
-<span class="normal">612</span>
-<span class="normal">613</span>
-<span class="normal">614</span>
-<span class="normal">615</span>
-<span class="normal">616</span>
-<span class="normal">617</span>
-<span class="normal">618</span>
-<span class="normal">619</span>
-<span class="normal">620</span>
-<span class="normal">621</span>
-<span class="normal">622</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span>
+<span class="normal">649</span>
+<span class="normal">650</span>
+<span class="normal">651</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">columns</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">Column</span> <span class="o">|</span> <span class="nb">type</span><span class="p">[</span><span class="n">Column</span><span class="p">]],</span>
     <span class="o">*</span><span class="p">,</span>
@@ -6058,9 +6058,9 @@ Bindings override earlier entries for the same key. Omit this argument or pass a
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/devboard/_internal/board.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">627</span>
-<span class="normal">628</span>
-<span class="normal">629</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">force_refresh_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">/</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">force_refresh_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">/</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Prepare one item for a forced scan."""</span>
     <span class="bp">self</span><span class="o">.</span><span class="n">refresh_item</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -6115,14 +6115,14 @@ An empty filter shows every row.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/devboard/_internal/board.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">631</span>
-<span class="normal">632</span>
-<span class="normal">633</span>
-<span class="normal">634</span>
-<span class="normal">635</span>
-<span class="normal">636</span>
-<span class="normal">637</span>
-<span class="normal">638</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">matches_filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">:</span> <span class="n">Row</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">/</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">660</span>
+<span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">matches_filter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">:</span> <span class="n">Row</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">/</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Match filter text against displayed cells, ignoring case.</span>
 
 <span class="sd">    Override this method to match source items instead. For example, a</span>
@@ -6155,8 +6155,8 @@ An empty filter shows every row.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/devboard/_internal/board.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">624</span>
-<span class="normal">625</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">refresh_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">/</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">653</span>
+<span class="normal">654</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">refresh_item</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">/</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Prepare one item for a normal scan."""</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -15428,14 +15428,19 @@ The filter also applies to rows added later.</p>
 <a href="#devboard.row_action" class="headerlink" title="Permanent link">¤</a></h2>
 <div class="doc-signature highlight"><pre><span></span><code><span class="nf">row_action</span><span class="p">(</span>
     <span class="n"><span title="devboard.row_action(method)">method</span></span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Callable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable">Callable</a></span><span class="p">[</span>
-        <span class="p">[</span><span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Row&lt;/span&gt;
+        <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Concatenate&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Concatenate">Concatenate</a></span><span class="p">[</span>
+            <span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Row&lt;/span&gt;
 
 
   &lt;span class=&quot;doc doc-labels&quot;&gt;
       &lt;small class=&quot;doc doc-label doc-label-dataclass&quot;&gt;&lt;code&gt;dataclass&lt;/code&gt;&lt;/small&gt;
-  &lt;/span&gt; (&lt;code&gt;devboard._internal.board.Row&lt;/code&gt;)" href="./#devboard.Row">Row</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Any&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]],</span> <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Awaitable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Awaitable">Awaitable</a></span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span>
+  &lt;/span&gt; (&lt;code&gt;devboard._internal.board.Row&lt;/code&gt;)" href="./#devboard.Row">Row</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Any&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span> <span class="n"><span title="devboard._internal.board._ActionParamsT">_ActionParamsT</span></span>
+        <span class="p">],</span>
+        <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Awaitable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Awaitable">Awaitable</a></span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">],</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Callable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable">Callable</a></span><span class="p">[[</span><span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">],</span> <span class="kc">None</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Callable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable">Callable</a></span><span class="p">[</span>
+    <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Concatenate&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Concatenate">Concatenate</a></span><span class="p">[</span><span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">,</span> <span class="n"><span title="devboard._internal.board._ActionParamsT">_ActionParamsT</span></span><span class="p">],</span> <span class="kc">None</span>
+<span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -15443,6 +15448,8 @@ The filter also applies to rows added later.</p>
         <p>Adapt a row callback into a Textual action.</p>
 <p>Decorate an <code>action_*</code> method and use the suffix as the binding action. For example, bind <code>open</code> to a decorated
 <code>action_open</code> method.</p>
+<p>Declare the row as the first argument after <code>self</code> and make it positional-only: <code>action_label(self, row, /, label)</code>.
+Binding arguments follow the row. For example, <code>label('feature')</code> calls <code>action_label(row, 'feature')</code>.</p>
 <p>The decorated method receives each selected row, or the current row when no rows are selected. Devboard runs each
 synchronous call in a background thread unless the column sets <code>THREADED</code> to false. Async methods run in async workers.
 When caching is enabled, Devboard updates the cache once after the whole operation, including no-ops and failed calls.</p>
@@ -15474,30 +15481,36 @@ When caching is enabled, Devboard updates the cache once after the whole operati
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/devboard/_internal/board.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">536</span>
-<span class="normal">537</span>
-<span class="normal">538</span>
-<span class="normal">539</span>
-<span class="normal">540</span>
-<span class="normal">541</span>
-<span class="normal">542</span>
-<span class="normal">543</span>
-<span class="normal">544</span>
-<span class="normal">545</span>
-<span class="normal">546</span>
-<span class="normal">547</span>
-<span class="normal">548</span>
-<span class="normal">549</span>
-<span class="normal">550</span>
-<span class="normal">551</span>
-<span class="normal">552</span>
-<span class="normal">553</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">row_action</span><span class="p">(</span>
-    <span class="n">method</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">_ActionColumnT</span><span class="p">,</span> <span class="n">Row</span><span class="p">[</span><span class="n">Any</span><span class="p">]],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">],</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">_ActionColumnT</span><span class="p">],</span> <span class="kc">None</span><span class="p">]:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">row_action</span><span class="p">(</span>
+    <span class="n">method</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="n">Concatenate</span><span class="p">[</span><span class="n">_ActionColumnT</span><span class="p">,</span> <span class="n">Row</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="n">_ActionParamsT</span><span class="p">],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[</span><span class="n">Concatenate</span><span class="p">[</span><span class="n">_ActionColumnT</span><span class="p">,</span> <span class="n">_ActionParamsT</span><span class="p">],</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""Adapt a row callback into a Textual action.</span>
 
 <span class="sd">    Decorate an `action_*` method and use the suffix as the binding action. For example, bind `open` to a decorated</span>
 <span class="sd">    `action_open` method.</span>
+
+<span class="sd">    Declare the row as the first argument after `self` and make it positional-only: `action_label(self, row, /, label)`.</span>
+<span class="sd">    Binding arguments follow the row. For example, `label('feature')` calls `action_label(row, 'feature')`.</span>
 
 <span class="sd">    The decorated method receives each selected row, or the current row when no rows are selected. Devboard runs each</span>
 <span class="sd">    synchronous call in a background thread unless the column sets `THREADED` to false. Async methods run in async workers.</span>
@@ -15505,8 +15518,8 @@ When caching is enabled, Devboard updates the cache once after the whole operati
 <span class="sd">    """</span>
 
     <span class="nd">@wraps</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">action</span><span class="p">(</span><span class="n">column</span><span class="p">:</span> <span class="n">_ActionColumnT</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">column</span><span class="o">.</span><span class="n">_apply_to_rows</span><span class="p">(</span><span class="n">partial</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">column</span><span class="p">))</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">action</span><span class="p">(</span><span class="n">column</span><span class="p">:</span> <span class="n">_ActionColumnT</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">_ActionParamsT</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">_ActionParamsT</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">column</span><span class="o">.</span><span class="n">_apply_to_rows</span><span class="p">(</span><span class="n">_bind_row_action</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">column</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span>
 
     <span class="k">return</span> <span class="n">action</span>
 </code></pre></div></td></tr></table></div>
@@ -15525,15 +15538,19 @@ When caching is enabled, Devboard updates the cache once after the whole operati
 <a href="#devboard.rows_action" class="headerlink" title="Permanent link">¤</a></h2>
 <div class="doc-signature highlight"><pre><span></span><code><span class="nf">rows_action</span><span class="p">(</span>
     <span class="n"><span title="devboard.rows_action(method)">method</span></span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Callable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable">Callable</a></span><span class="p">[</span>
-        <span class="p">[</span><span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Row&lt;/span&gt;
+        <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Concatenate&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Concatenate">Concatenate</a></span><span class="p">[</span>
+            <span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="&lt;code class=&quot;doc-symbol doc-symbol-heading doc-symbol-class&quot;&gt;&lt;/code&gt;            &lt;span class=&quot;doc doc-object-name doc-class-name&quot;&gt;Row&lt;/span&gt;
 
 
   &lt;span class=&quot;doc doc-labels&quot;&gt;
       &lt;small class=&quot;doc doc-label doc-label-dataclass&quot;&gt;&lt;code&gt;dataclass&lt;/code&gt;&lt;/small&gt;
-  &lt;/span&gt; (&lt;code&gt;devboard._internal.board.Row&lt;/code&gt;)" href="./#devboard.Row">Row</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Any&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]]],</span>
+  &lt;/span&gt; (&lt;code&gt;devboard._internal.board.Row&lt;/code&gt;)" href="./#devboard.Row">Row</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Any&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]],</span> <span class="n"><span title="devboard._internal.board._ActionParamsT">_ActionParamsT</span></span>
+        <span class="p">],</span>
         <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Awaitable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Awaitable">Awaitable</a></span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">],</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Callable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable">Callable</a></span><span class="p">[[</span><span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">],</span> <span class="kc">None</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;collections.abc.Callable&lt;/code&gt;" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable">Callable</a></span><span class="p">[</span>
+    <span class="n"><a class="autorefs autorefs-external" title="&lt;code&gt;typing.Concatenate&lt;/code&gt;" href="https://docs.python.org/3/library/typing.html#typing.Concatenate">Concatenate</a></span><span class="p">[</span><span class="n"><span title="devboard._internal.board._ActionColumnT">_ActionColumnT</span></span><span class="p">,</span> <span class="n"><span title="devboard._internal.board._ActionParamsT">_ActionParamsT</span></span><span class="p">],</span> <span class="kc">None</span>
+<span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -15541,6 +15558,8 @@ When caching is enabled, Devboard updates the cache once after the whole operati
         <p>Adapt a batch callback into a Textual action.</p>
 <p>Decorate an <code>action_*</code> method and use its suffix in a binding. The method receives one list of selected visible rows,
 or a list containing the current row when none are selected. Empty tables do not call the method.</p>
+<p>Declare the row list as the first argument after <code>self</code> and make it positional-only: <code>action_label(self, rows, /, label)</code>.
+Binding arguments follow the row list. For example, <code>label('feature')</code> calls <code>action_label(rows, 'feature')</code>.</p>
 <p>Rows are stable snapshots, with the same <code>data</code>, <code>item</code>, <code>remove()</code>, and <code>refresh()</code> API as <code>row_action</code> callbacks.
 Synchronous methods run in one background thread unless the column sets <code>THREADED</code> to false. Async methods always
 run in an async worker, so they can await <code>self.app.push_screen_wait()</code> to ask for shared input.
@@ -15574,33 +15593,39 @@ Use <code>asyncio.to_thread()</code> for blocking work inside an async method.</
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/devboard/_internal/board.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">556</span>
-<span class="normal">557</span>
-<span class="normal">558</span>
-<span class="normal">559</span>
-<span class="normal">560</span>
-<span class="normal">561</span>
-<span class="normal">562</span>
-<span class="normal">563</span>
-<span class="normal">564</span>
-<span class="normal">565</span>
-<span class="normal">566</span>
-<span class="normal">567</span>
-<span class="normal">568</span>
-<span class="normal">569</span>
-<span class="normal">570</span>
-<span class="normal">571</span>
-<span class="normal">572</span>
-<span class="normal">573</span>
-<span class="normal">574</span>
-<span class="normal">575</span>
-<span class="normal">576</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">rows_action</span><span class="p">(</span>
-    <span class="n">method</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">_ActionColumnT</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Row</span><span class="p">[</span><span class="n">Any</span><span class="p">]]],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">],</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">_ActionColumnT</span><span class="p">],</span> <span class="kc">None</span><span class="p">]:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">rows_action</span><span class="p">(</span>
+    <span class="n">method</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[</span><span class="n">Concatenate</span><span class="p">[</span><span class="n">_ActionColumnT</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Row</span><span class="p">[</span><span class="n">Any</span><span class="p">]],</span> <span class="n">_ActionParamsT</span><span class="p">],</span> <span class="n">Awaitable</span><span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[</span><span class="n">Concatenate</span><span class="p">[</span><span class="n">_ActionColumnT</span><span class="p">,</span> <span class="n">_ActionParamsT</span><span class="p">],</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""Adapt a batch callback into a Textual action.</span>
 
 <span class="sd">    Decorate an `action_*` method and use its suffix in a binding. The method receives one list of selected visible rows,</span>
 <span class="sd">    or a list containing the current row when none are selected. Empty tables do not call the method.</span>
+
+<span class="sd">    Declare the row list as the first argument after `self` and make it positional-only: `action_label(self, rows, /, label)`.</span>
+<span class="sd">    Binding arguments follow the row list. For example, `label('feature')` calls `action_label(rows, 'feature')`.</span>
 
 <span class="sd">    Rows are stable snapshots, with the same `data`, `item`, `remove()`, and `refresh()` API as `row_action` callbacks.</span>
 <span class="sd">    Synchronous methods run in one background thread unless the column sets `THREADED` to false. Async methods always</span>
@@ -15611,8 +15636,8 @@ Use <code>asyncio.to_thread()</code> for blocking work inside an async method.</
 <span class="sd">    """</span>
 
     <span class="nd">@wraps</span><span class="p">(</span><span class="n">method</span><span class="p">)</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">action</span><span class="p">(</span><span class="n">column</span><span class="p">:</span> <span class="n">_ActionColumnT</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">column</span><span class="o">.</span><span class="n">_apply_to_row_batch</span><span class="p">(</span><span class="n">partial</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">column</span><span class="p">))</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">action</span><span class="p">(</span><span class="n">column</span><span class="p">:</span> <span class="n">_ActionColumnT</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">_ActionParamsT</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">_ActionParamsT</span><span class="o">.</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">column</span><span class="o">.</span><span class="n">_apply_to_row_batch</span><span class="p">(</span><span class="n">_bind_row_action</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">column</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">))</span>
 
     <span class="k">return</span> <span class="n">action</span>
 </code></pre></div></td></tr></table></div>
