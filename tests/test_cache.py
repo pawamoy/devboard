@@ -102,16 +102,16 @@ class RowOperationColumn(Column[str]):
         return [(value,)]
 
     @row_action
-    def action_remove(self, row: Row[str]) -> None:
+    def action_remove(self, row: Row[str], /) -> None:
         """Remove a row from the board."""
         row.remove()
 
     @row_action
-    def action_nothing(self, row: Row[str]) -> None:
+    def action_nothing(self, row: Row[str], /) -> None:
         """Leave a row unchanged."""
 
     @row_action
-    def action_fail(self, row: Row[str]) -> None:
+    def action_fail(self, row: Row[str], /) -> None:
         """Fail while operating on a row."""
         raise RuntimeError(row.item)
 
@@ -132,12 +132,12 @@ class RowsOperationColumn(RowOperationColumn):
             row.remove()
 
     @rows_action
-    def action_batch(self, rows: list[Row[str]]) -> None:
+    def action_batch(self, rows: list[Row[str]], /) -> None:
         """Apply a synchronous batch operation."""
         self._operate_rows(rows)
 
     @rows_action
-    async def action_async_batch(self, rows: list[Row[str]]) -> None:
+    async def action_async_batch(self, rows: list[Row[str]], /) -> None:
         """Apply an asynchronous batch operation."""
         await asyncio.sleep(0)
         self._operate_rows(rows)

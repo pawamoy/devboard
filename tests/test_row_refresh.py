@@ -50,12 +50,12 @@ class UpdatingIssuesColumn(CountingIssuesColumn):
     force: bool = False
 
     @row_action
-    def action_update(self, row: Row[Issue]) -> None:
+    def action_update(self, row: Row[Issue], /) -> None:
         """Change an issue and refresh the columns affected by the change."""
         self._update_issue(row)
 
     @rows_action
-    def action_update_batch(self, rows: list[Row[Issue]]) -> None:
+    def action_update_batch(self, rows: list[Row[Issue]], /) -> None:
         """Change all selected issues in one callback."""
         for row in rows:
             self._update_issue(row)

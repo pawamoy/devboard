@@ -96,7 +96,7 @@ class BaseActionsColumn(Column[str]):
         self.actions: list[tuple[str, str]] = []
 
     @row_action
-    def action_base(self, row: Row[str]) -> None:
+    def action_base(self, row: Row[str], /) -> None:
         """Record the inherited action."""
         self.actions.append(("base", row.item))
 
@@ -107,7 +107,7 @@ class ExtendedActionsColumn(BaseActionsColumn):
     BINDINGS: ClassVar = [("e", "extra", "Extra action")]
 
     @row_action
-    def action_extra(self, row: Row[str]) -> None:
+    def action_extra(self, row: Row[str], /) -> None:
         """Record the additional action."""
         self.actions.append(("extra", row.item))
 
@@ -145,7 +145,7 @@ class BatchActionsColumn(Column[str]):
         self.action_thread: int | None = None
 
     @rows_action
-    def action_batch(self, rows: list[Row[str]]) -> None:
+    def action_batch(self, rows: list[Row[str]], /) -> None:
         """Record the entire batch and remove its rows."""
         self.action_thread = get_ident()
         self.batches.append(rows)
@@ -201,6 +201,125 @@ def test_rows_action_receives_one_visible_batch(selection: str, threaded: bool) 
     asyncio.run(run_test())
 
 
+@pytest.mark.parametrize("batch", [True, False], ids=["rows_action", "row_action"])
+@pytest.mark.parametrize("asynchronous", [True, False], ids=["async", "sync"])
+@pytest.mark.parametrize("threaded", [True, False], ids=["threaded", "foreground"])
+@pytest.mark.parametrize("selected", [True, False], ids=["selected", "current"])
+def test_row_actions_forward_binding_arguments(batch: bool, asynchronous: bool, threaded: bool, selected: bool) -> None:
+    """Binding arguments follow the positional-only row or row list for sync and async callbacks."""
+
+    class ParameterActionsColumn(Column[str]):
+        """Record arguments, source items, and the callback's execution thread."""
+
+        HEADERS = ("Value",)
+        BINDINGS: ClassVar = [
+            ("r", "label_row('feature', 7)", "Label row"),
+            ("b", "label_batch('feature', 7)", "Label batch"),
+            ("a", "label_async_row('feature', 7)", "Label row asynchronously"),
+            ("s", "label_async_batch('feature', 7)", "Label batch asynchronously"),
+        ]
+
+        def __init__(self) -> None:
+            """Initialize callback history."""
+            super().__init__()
+            self.calls: list[tuple[str, int, list[str], int]] = []
+
+        @row_action
+        def action_label_row(self, row: Row[str], /, label: str, count: int) -> None:
+            """Record arguments for one row."""
+            self.calls.append((label, count, [row.item], get_ident()))
+
+        @rows_action
+        def action_label_batch(self, rows: list[Row[str]], /, label: str, count: int) -> None:
+            """Record arguments for the entire batch."""
+            self.calls.append((label, count, [row.item for row in rows], get_ident()))
+
+        @row_action
+        async def action_label_async_row(self, row: Row[str], /, label: str, count: int) -> None:
+            """Record arguments for one row after yielding."""
+            await asyncio.sleep(0)
+            self.calls.append((label, count, [row.item], get_ident()))
+
+        @rows_action
+        async def action_label_async_batch(self, rows: list[Row[str]], /, label: str, count: int) -> None:
+            """Record arguments for the entire batch after yielding."""
+            await asyncio.sleep(0)
+            self.calls.append((label, count, [row.item for row in rows], get_ident()))
+
+    async def run_test() -> None:
+        column = ParameterActionsColumn()
+        column.THREADED = threaded
+        app = ActionApp(column)
+        async with app.run_test() as pilot:
+            column._reset()
+            for value in ("first", "second", "third"):
+                column._extend_item(value, [(value,)])
+            column._finalize()
+
+            # Keep the cursor outside the selection to distinguish both dispatch paths.
+            if selected:
+                for row in list(column.table.selectable_rows)[1:]:
+                    row.select()
+
+            key = {(False, False): "r", (True, False): "b", (False, True): "a", (True, True): "s"}[batch, asynchronous]
+            await pilot.press(key)
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            await pilot.pause()
+
+            expected_items = ["second", "third"] if selected else ["first"]
+            expected_calls = [expected_items] if batch else [[item] for item in expected_items]
+            assert sorted((label, count, items) for label, count, items, _ in column.calls) == [
+                ("feature", 7, items) for items in expected_calls
+            ]
+            assert all((thread != get_ident()) == (threaded and not asynchronous) for _, _, _, thread in column.calls)
+
+    asyncio.run(run_test())
+
+
+@pytest.mark.parametrize("batch", [True, False], ids=["rows_action", "row_action"])
+def test_binding_keywords_do_not_replace_positional_rows(batch: bool) -> None:
+    """Binding keywords named row or rows remain separate from the supplied snapshots."""
+
+    class KeywordActionsColumn(Column[str]):
+        """Record source items and binding keyword arguments."""
+
+        HEADERS = ("Value",)
+        THREADED = False
+
+        def __init__(self) -> None:
+            """Initialize callback history."""
+            super().__init__()
+            self.calls: list[tuple[list[str], dict[str, str]]] = []
+
+        @row_action
+        def action_record_row(self, row: Row[str], /, **kwargs: str) -> None:
+            """Record one positional row and its separate binding keywords."""
+            self.calls.append(([row.item], kwargs))
+
+        @rows_action
+        def action_record_batch(self, rows: list[Row[str]], /, **kwargs: str) -> None:
+            """Record positional rows and their separate binding keywords."""
+            self.calls.append(([row.item for row in rows], kwargs))
+
+    async def run_test() -> None:
+        column = KeywordActionsColumn()
+        app = ActionApp(column)
+        async with app.run_test() as pilot:
+            column._reset()
+            column._extend_item("issue", [("Issue",)])
+            column._finalize()
+
+            # Names used by the injected row parameters can also appear in binding keywords.
+            action = column.action_record_batch if batch else column.action_record_row
+            action(row="row keyword", rows="rows keyword")
+            await asyncio.wait_for(app.workers.wait_for_complete(), timeout=5)
+            await pilot.pause()
+
+            assert column.calls == [(["issue"], {"row": "row keyword", "rows": "rows keyword"})]
+
+    asyncio.run(run_test())
+
+
 class BatchMessage(ModalScreen[str | None]):
     """Ask for one message shared by the batch."""
 
@@ -229,7 +348,7 @@ class PromptBatchColumn(BatchActionsColumn):
         self.prompts = 0
 
     @rows_action
-    async def action_batch(self, rows: list[Row[str]]) -> None:
+    async def action_batch(self, rows: list[Row[str]], /) -> None:
         """Prompt once and record the same message for each row."""
         self.prompts += 1
         message = await self.app.push_screen_wait(BatchMessage())
@@ -282,7 +401,7 @@ def test_async_row_action_awaits_each_selected_row(threaded: bool) -> None:
 
     class AsyncColumn(BatchActionsColumn):
         @row_action
-        async def action_record(self, row: Row[str]) -> None:
+        async def action_record(self, row: Row[str], /) -> None:
             """Record a row after yielding to the event loop."""
             await asyncio.sleep(0)
             self.batches.append([row])

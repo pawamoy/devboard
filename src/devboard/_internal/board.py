@@ -22,7 +22,7 @@ import asyncio
 from contextlib import suppress
 from functools import partial, wraps
 from inspect import iscoroutinefunction
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, Generic, ParamSpec, TypeVar, cast
 
 from textual import events, on
 from textual.binding import Binding, BindingType
@@ -531,15 +531,41 @@ class Column(Container, ModalMixin, NotifyMixin, Generic[_ItemT]):
 
 
 _ActionColumnT = TypeVar("_ActionColumnT", bound=Column[Any])
+_ActionRowT = TypeVar("_ActionRowT")
+_ActionParamsT = ParamSpec("_ActionParamsT")
+
+
+def _bind_row_action(
+    method: Callable[Concatenate[_ActionColumnT, _ActionRowT, _ActionParamsT], Awaitable[None] | None],
+    column: _ActionColumnT,
+    /,
+    *args: _ActionParamsT.args,
+    **kwargs: _ActionParamsT.kwargs,
+) -> Callable[[_ActionRowT], Awaitable[None] | None]:
+    """Insert a positional row before binding arguments and preserve async dispatch."""
+    if iscoroutinefunction(method):
+
+        async def invoke_async(row: _ActionRowT, /) -> None:
+            await cast("Awaitable[None]", method(column, row, *args, **kwargs))
+
+        return invoke_async
+
+    def invoke(row: _ActionRowT, /) -> Awaitable[None] | None:
+        return method(column, row, *args, **kwargs)
+
+    return invoke
 
 
 def row_action(
-    method: Callable[[_ActionColumnT, Row[Any]], Awaitable[None] | None],
-) -> Callable[[_ActionColumnT], None]:
+    method: Callable[Concatenate[_ActionColumnT, Row[Any], _ActionParamsT], Awaitable[None] | None],
+) -> Callable[Concatenate[_ActionColumnT, _ActionParamsT], None]:
     """Adapt a row callback into a Textual action.
 
     Decorate an `action_*` method and use the suffix as the binding action. For example, bind `open` to a decorated
     `action_open` method.
+
+    Declare the row as the first argument after `self` and make it positional-only: `action_label(self, row, /, label)`.
+    Binding arguments follow the row. For example, `label('feature')` calls `action_label(row, 'feature')`.
 
     The decorated method receives each selected row, or the current row when no rows are selected. Devboard runs each
     synchronous call in a background thread unless the column sets `THREADED` to false. Async methods run in async workers.
@@ -547,19 +573,22 @@ def row_action(
     """
 
     @wraps(method)
-    def action(column: _ActionColumnT) -> None:
-        column._apply_to_rows(partial(method, column))
+    def action(column: _ActionColumnT, /, *args: _ActionParamsT.args, **kwargs: _ActionParamsT.kwargs) -> None:
+        column._apply_to_rows(_bind_row_action(method, column, *args, **kwargs))
 
     return action
 
 
 def rows_action(
-    method: Callable[[_ActionColumnT, list[Row[Any]]], Awaitable[None] | None],
-) -> Callable[[_ActionColumnT], None]:
+    method: Callable[Concatenate[_ActionColumnT, list[Row[Any]], _ActionParamsT], Awaitable[None] | None],
+) -> Callable[Concatenate[_ActionColumnT, _ActionParamsT], None]:
     """Adapt a batch callback into a Textual action.
 
     Decorate an `action_*` method and use its suffix in a binding. The method receives one list of selected visible rows,
     or a list containing the current row when none are selected. Empty tables do not call the method.
+
+    Declare the row list as the first argument after `self` and make it positional-only: `action_label(self, rows, /, label)`.
+    Binding arguments follow the row list. For example, `label('feature')` calls `action_label(rows, 'feature')`.
 
     Rows are stable snapshots, with the same `data`, `item`, `remove()`, and `refresh()` API as `row_action` callbacks.
     Synchronous methods run in one background thread unless the column sets `THREADED` to false. Async methods always
@@ -570,8 +599,8 @@ def rows_action(
     """
 
     @wraps(method)
-    def action(column: _ActionColumnT) -> None:
-        column._apply_to_row_batch(partial(method, column))
+    def action(column: _ActionColumnT, /, *args: _ActionParamsT.args, **kwargs: _ActionParamsT.kwargs) -> None:
+        column._apply_to_row_batch(_bind_row_action(method, column, *args, **kwargs))
 
     return action
 

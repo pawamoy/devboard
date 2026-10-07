@@ -234,11 +234,11 @@ class ToCommit(Column[Project]):
         return [(project, status_line)] if status_line else []
 
     @row_action
-    def action_status(self, row):
+    def action_status(self, row, /):
         self.modal(text=row.item.repo.git(c="color.status=always").status())
 
     @row_action
-    def action_diff(self, row):
+    def action_diff(self, row, /):
         self.modal(text=row.item.repo.git(c="color.ui=always").diff())
 
 
@@ -259,7 +259,7 @@ The `BINDINGS` variable is directly used by Textual:
 see [their Bindings documentation](https://textual.textualize.io/guide/input/#bindings)
 for more information.
 
-Next, we write `action_status` and `action_diff`. Textual action methods normally receive no row. The `row_action` decorator supplies each selected visible row, or the current row if no visible rows are selected. Synchronous methods run in background threads unless the column sets `THREADED` to `False`. Async methods run in async workers.
+Next, we write `action_status` and `action_diff`. Textual action methods normally receive no row. The `row_action` decorator supplies each selected visible row, or the current row if no visible rows are selected. Declare the row parameter positional-only with `/`. Binding arguments follow the row, for example `action_label(self, row, /, label)` for a `label('feature')` binding. Synchronous methods run in background threads unless the column sets `THREADED` to `False`. Async methods run in async workers.
 
 The [`devboard.Row`][] instance has an `item` attribute that returns the [`devboard.Project`][] that produced it. The project does not have to be one of the displayed cells.
 The project itself has a `repo` attribute that returns a `Repo` object
@@ -379,11 +379,11 @@ class ToPull(Column[Project]):
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 
     @row_action
-    def action_pull(self, row):
+    def action_pull(self, row, /):
         self._update_branch(row, delete=False)
 
     @row_action
-    def action_delete(self, row):
+    def action_delete(self, row, /):
         self._update_branch(row, delete=True)
 
     def _update_branch(self, row, *, delete):
@@ -442,7 +442,7 @@ For example, a template update can create uncommitted changes:
 ```python
 class ToUpdate(Column[Project]):
     @row_action
-    def action_update(self, row: Row[Project]):
+    def action_update(self, row: Row[Project], /):
         update_project(row.item)
         row.remove()
         row.refresh(columns=[ToCommit])
@@ -487,7 +487,7 @@ print(screenshot("columns/commit_pull", size=(100, 20), press=("tab")))
 
 ### Asking for shared input in a batch action
 
-Use [`rows_action`][devboard.rows_action] when an operation needs all selected rows together. The method receives one list of visible selected rows. With no selection, it receives a list containing the current row. Empty tables skip the method.
+Use [`rows_action`][devboard.rows_action] when an operation needs all selected rows together. The method receives one list of visible selected rows. With no selection, it receives a list containing the current row. Empty tables skip the method. Declare the row list positional-only with `/`. Binding arguments follow the row list, for example `action_label(self, rows, /, label)` for a `label('feature')` binding.
 
 For example, a commit action can ask for one message and use it for every selected project. Create a Textual `ModalScreen[str | None]` named `CommitMessage`. Dismiss it with the entered message, or `None` when canceled. Add this action to your `ToCommit` column:
 
@@ -505,7 +505,7 @@ class ToCommit(Column[Project]):
     _committing = False
 
     @rows_action
-    async def action_commit(self, rows: list[Row[Project]]) -> None:
+    async def action_commit(self, rows: list[Row[Project]], /) -> None:
         if self._committing:
             self.notify_warning("A commit operation is already ongoing")
             return
@@ -570,7 +570,7 @@ class ToPush(Column[Project]):
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
     @row_action
-    def action_push(self, row):
+    def action_push(self, row, /):
         project, branch, _ = row.data
         message = f"Pushing branch [i]{branch}[/] in [i]{project}[/]"
         with project.locked() as acquired:
@@ -771,7 +771,7 @@ class ToTriage(Column[Issue]):
         return [(f"{issue.repository}#{issue.number}", issue.title)]
 
     @row_action
-    def action_open(self, row: Row[Issue]):
+    def action_open(self, row: Row[Issue], /):
         webbrowser.open(row.item.url)
 
 

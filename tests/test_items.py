@@ -76,7 +76,7 @@ class IssuesColumn(Column[Issue]):
         return [(issue.title,)]
 
     @row_action
-    def action_record(self, row: Row[Issue]) -> None:
+    def action_record(self, row: Row[Issue], /) -> None:
         """Record the typed source item received by an action."""
         self.applied.append(row.item)
 

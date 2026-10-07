@@ -80,12 +80,12 @@ class ToCommit(Column[MyProject]):
         return [(project, status_line)] if status_line else []
 
     @row_action
-    def action_status(self, row: Row[MyProject]) -> None:
+    def action_status(self, row: Row[MyProject], /) -> None:
         """Show the selected project's Git status."""
         self.modal(text=row.item.repo.git(c="color.status=always").status())
 
     @row_action
-    def action_diff(self, row: Row[MyProject]) -> None:
+    def action_diff(self, row: Row[MyProject], /) -> None:
         """Show the selected project's Git diff."""
         self.modal(text=row.item.repo.git(c="color.ui=always").diff())
 
@@ -112,12 +112,12 @@ class ToPull(Column[MyProject]):
         return [(project, branch, commits) for branch, commits in project.unpulled().items() if commits]
 
     @row_action
-    def action_pull(self, row: Row[MyProject]) -> None:
+    def action_pull(self, row: Row[MyProject], /) -> None:
         """Pull the branch in a selected row."""
         self._update_branch(row, delete=False)
 
     @row_action
-    def action_delete(self, row: Row[MyProject]) -> None:
+    def action_delete(self, row: Row[MyProject], /) -> None:
         """Delete the branch in a selected row."""
         self._update_branch(row, delete=True)
 
@@ -171,7 +171,7 @@ class ToPush(Column[MyProject]):
         return [(project, branch, commits) for branch, commits in project.unpushed().items() if commits]
 
     @row_action
-    def action_push(self, row: Row[MyProject]) -> None:
+    def action_push(self, row: Row[MyProject], /) -> None:
         """Push the branch in a selected row."""
         project, branch, _ = row.data
         message = f"Pushing branch [i]{branch}[/] in [i]{project}[/]"
