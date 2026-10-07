@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [0.7.0](https://github.com/pawamoy/devboard/releases/tag/0.7.0) - 2026-10-07
+
+<small>[Compare with 0.6.1](https://github.com/pawamoy/devboard/compare/0.6.1...0.7.0)</small>
+
+### Features
+
+- Re-allow passing arguments to actions ([7553bf0](https://github.com/pawamoy/devboard/commit/7553bf0cafb79002345af162becae96686367a2c) by Timothée Mazzucotelli).
+
 ## [0.6.1](https://github.com/pawamoy/devboard/releases/tag/0.6.1) - 2026-10-06
 
 <small>[Compare with 0.6.0](https://github.com/pawamoy/devboard/compare/0.6.0...0.6.1)</small>
